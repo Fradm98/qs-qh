@@ -22,14 +22,3 @@ def least_busy_backend():
 def save_jobs(filename: str, jobs: dict):
     with open(f'{filename}.json', 'w') as json_file:
         json.dump(jobs, json_file, indent=4)
-
-def retrieve_job_id(n_qubits, depth, extrapolation_method, mem, filename):
-    ids = []
-    with open(f'{filename}.json', 'r') as json_file:
-        jobs = json.load(json_file)
-        for job in jobs:
-            if job['n_qubits'] == n_qubits and job['depth'] == depth:
-                for c_dict in job['batch']:
-                    if c_dict['extrapolator'] == extrapolation_method and c_dict['mem'] == mem:
-                        ids.append(c_dict['job_id'])
-    return ids
