@@ -1,0 +1,902 @@
+[
+    {
+        "n_qubits": 4,
+        "depth": 4,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2m7gp75q40008tr1z0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 4,
+        "depth": 4,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2m7heyhpyg008amee0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 4,
+        "depth": 4,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2m7j6965y0008542ag",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 4,
+        "depth": 8,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2m7jy965y0008542b0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 4,
+        "depth": 8,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2m7kekfpw00080gcf0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 4,
+        "depth": 8,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2m7m6kfpw00080gcg0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 4,
+        "depth": 16,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2m7mykfpw00080gch0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 4,
+        "depth": 16,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2m7ne75q40008tr220",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 4,
+        "depth": 16,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2m7p6bqt7g0081zrk0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 4,
+        "depth": 32,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2m7py75q40008tr23g",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 4,
+        "depth": 32,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2m7qe965y0008542c0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 4,
+        "depth": 32,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2m7r7kfpw00080gcj0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 4,
+        "depth": 64,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2m7s7bqt7g0081zrm0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 4,
+        "depth": 64,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2m7sqyhpyg008ameg0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 4,
+        "depth": 64,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2m7t7965y0008542d0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 8,
+        "depth": 4,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2m7tzyhpyg008amehg",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 8,
+        "depth": 4,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2m7vfyhpyg008amej0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 8,
+        "depth": 4,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2m7w74amg00087jcq0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 8,
+        "depth": 8,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2m7xq75q40008tr25g",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 8,
+        "depth": 8,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2m7y775q40008tr260",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 8,
+        "depth": 8,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2m7yz965y0008542f0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 8,
+        "depth": 16,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2m7zqbqt7g0081zrpg",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 8,
+        "depth": 16,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2m80075q40008tr270",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 8,
+        "depth": 16,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2m80gyhpyg008amem0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 8,
+        "depth": 32,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2m81r965y0008542gg",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 8,
+        "depth": 32,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2m82g75q40008tr28g",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 8,
+        "depth": 32,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2m838yhpyg008amemg",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 8,
+        "depth": 64,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2m84ryhpyg008amep0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 8,
+        "depth": 64,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2m85g75q40008tr29g",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 8,
+        "depth": 64,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2m860965y0008542hg",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 16,
+        "depth": 4,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2m86r75q40008tr2a0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 16,
+        "depth": 4,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2m87gyhpyg008amepg",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 16,
+        "depth": 4,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2m881yhpyg008ameq0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 16,
+        "depth": 8,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2m899bqt7g0081zrs0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 16,
+        "depth": 8,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2m89syhpyg008amer0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 16,
+        "depth": 8,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2m8a9bqt7g0081zrsg",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 16,
+        "depth": 16,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2m8bskfpw00080gcm0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 16,
+        "depth": 16,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2m8c975q40008tr2c0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 16,
+        "depth": 16,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2m8d1kfpw00080gcn0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 16,
+        "depth": 32,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2m8f1965y0008542kg",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 16,
+        "depth": 32,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2m8g2kfpw00080gcng",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 16,
+        "depth": 32,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2m8gj965y0008542mg",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 16,
+        "depth": 64,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2m8kjbqt7g0081zrv0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 16,
+        "depth": 64,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2m8ma4amg00087jcvg",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 16,
+        "depth": 64,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2m8mtyhpyg008ametg",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 32,
+        "depth": 4,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2m8qj75q40008tr2d0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 32,
+        "depth": 4,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2m8rb965y0008542p0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 32,
+        "depth": 4,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2m8rv75q40008tr2e0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 32,
+        "depth": 8,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2m8w3965y0008542r0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 32,
+        "depth": 8,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2m8wk75q40008tr2fg",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 32,
+        "depth": 8,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2m8xkyhpyg008amew0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 32,
+        "depth": 16,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2m91cyhpyg008amewg",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 32,
+        "depth": 16,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2m91wbqt7g0081zrz0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 32,
+        "depth": 16,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2m92m965y0008542t0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 32,
+        "depth": 32,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2m97wkfpw00080gcqg",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 32,
+        "depth": 32,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2m98dbqt7g0081zs00",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 32,
+        "depth": 32,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2m995965y0008542vg",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 32,
+        "depth": 64,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2m9hebqt7g0081zs20",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 32,
+        "depth": 64,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2m9jebqt7g0081zs2g",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 32,
+        "depth": 64,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2m9k64amg00087jcz0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 64,
+        "depth": 4,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2m9r7kfpw00080gctg",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 64,
+        "depth": 4,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2m9rz965y0008542x0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 64,
+        "depth": 4,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2m9sq965y0008542xg",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 64,
+        "depth": 8,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2m9yzyhpyg008amf0g",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 64,
+        "depth": 8,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2m9zfkfpw00080gcv0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 64,
+        "depth": 8,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2ma08965y0008542yg",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 64,
+        "depth": 16,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2ma7gyhpyg008amf10",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 64,
+        "depth": 16,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2ma89yhpyg008amf1g",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 64,
+        "depth": 16,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2ma8s75q40008tr2n0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 64,
+        "depth": 32,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2majj75q40008tr2r0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 64,
+        "depth": 32,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2makakfpw00080gcxg",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 64,
+        "depth": 32,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2mam2965y00085430g",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 64,
+        "depth": 64,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2mb2m75q40008tr2tg",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 64,
+        "depth": 64,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2mb3ckfpw00080gcz0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 64,
+        "depth": 64,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2mb444amg00087jd4g",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    }
+]

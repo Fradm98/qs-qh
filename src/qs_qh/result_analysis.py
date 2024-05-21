@@ -1,5 +1,6 @@
 import json
 import numpy as np
+from qiskit_ibm_runtime import QiskitRuntimeService
 
 def retrieve_job_id(n_qubits, depth, extrapolation_method, mem, filename):
     ids = []
@@ -12,7 +13,7 @@ def retrieve_job_id(n_qubits, depth, extrapolation_method, mem, filename):
                         ids.append(c_dict['job_id'])
     return ids
 
-def retrieve_results(qubits, depths, zne_extrapolator, mem, zne, service):
+def retrieve_results(qubits, depths, zne_extrapolator, mem, zne, service: QiskitRuntimeService):
     mean_errors = []
     for qubit in qubits:
         for depth in depths:
@@ -20,11 +21,10 @@ def retrieve_results(qubits, depths, zne_extrapolator, mem, zne, service):
             res = []
             for job_id in job_ids:
                 job = service.job(job_id=job_id)
-                print(job)
                 result = job.result()[0]
                 ev = result.data.evs.tolist()
                 res.append(ev)
-                print(f"- {ev} ({zne_extrapolator})")
+                print(f"- {ev} ({zne_extrapolator}), n qubits: {qubit}, depth: {depth}")
             mean = np.mean(np.asarray(res))
             std = np.std(np.asarray(res))
             mean_errors.append(mean)

@@ -1,0 +1,74 @@
+[
+    {
+        "n_qubits": 4,
+        "depth": 4,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2kxed75q40008tr16g",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 4,
+        "depth": 4,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2kxf54amg00087jc0g",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 4,
+        "depth": 4,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2kxfnkfpw00080gbr0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 8,
+        "depth": 4,
+        "batch": [
+            {
+                "job_stat_number": 0,
+                "job_id": "cs2kxge75q40008tr17g",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 8,
+        "depth": 4,
+        "batch": [
+            {
+                "job_stat_number": 1,
+                "job_id": "cs2kxgykfpw00080gbrg",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    },
+    {
+        "n_qubits": 8,
+        "depth": 4,
+        "batch": [
+            {
+                "job_stat_number": 2,
+                "job_id": "cs2kxhp965y0008541p0",
+                "extrapolator": "no_zne",
+                "mem": false
+            }
+        ]
+    }
+]
