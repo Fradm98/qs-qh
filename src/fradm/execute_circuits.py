@@ -1,5 +1,5 @@
-import numpy as np
-from numpy import pi
+import numpy as np # type: ignore
+from numpy import pi # type: ignore
 from numpy.random import default_rng
 
 from qiskit.quantum_info import SparsePauliOp
