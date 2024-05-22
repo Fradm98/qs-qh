@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools >= 68.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qs-qh"
+version = "2024.0.1"
+description = "Quantum Simulation on IBM Quantum Hardware. Study of Quantum Error Mitigation"
+readme = "README.md"
+requires-python = ">=3.6"
+license = {file = "LICENSE"}
+authors = [
+    {name="Francesco Di Marcantonio", email="francesco.di.marcantonio@cern.ch"},
+    {name="Jesus Cobos Jimenez", email="jesus.cobos@ehu.eus"},
+]
+maintainers = [
+    {name="Francesco Di Marcantonio", email="francesco.di.marcantonio@cern.ch"},
+    {name="Jesus Cobos Jimenez", email="jesus.cobos@ehu.eus"},
+]
+keywords = ["quantum simulation", "quantum algorithms", "quantum circuits", "qiskit"]
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: Microsoft :: Windows",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Programming Language :: Python :: 3.12"
+]
+
+dependencies = [
+  "numpy",
+  "scipy",
+  "qiskit",
+  "qiskit-ibm-runtime",
+  "matplotlib",
+  "jupyter",
+  "qs-mps",
+]
+
+[project.urls]
+Repository = "https://github.com/Fradm98/qs-qh.git"
+
+[project.optional-dependencies]
+tests = ["pytest", "coverage", "pytest-cov"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
