@@ -9,8 +9,8 @@ from qiskit_ibm_runtime import EstimatorOptions
 from qiskit_ibm_runtime import Batch, EstimatorV2
 from qiskit_ibm_runtime import ibm_backend
 
-from qs_qh.circuits import *
-from qs_qh.utils import *
+from fradm.circuits import *
+from fradm.utils import *
 
 
 def construct_logical_circuit(NUM_QUBITS: int, DEPTH: int, type_circ: QuantumCircuit, assign_params: str, dagger: bool=False):

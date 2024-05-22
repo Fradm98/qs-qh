@@ -1,2 +1,5 @@
-src/UNKNOWN.egg-info/*
-src/qs_qh/_pycache_/*
+src/UNKNOWN.egg-info/
+Icon?
+
+src/fradm/__pychache__/
+src/cobos/__pychache__/
