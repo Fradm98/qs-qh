@@ -26,6 +26,7 @@ class execdb:
 
     def _search_batches_indices_by_params(self, batch_args, physical_circuits, observable_func_name, limit=10):
         indices_to_return = []
+        observable_func_name = observable_func_name.__name__ if callable(observable_func_name) else observable_func_name
         for i, batch in enumerate(self._data[::-1]):
             is_equal = all([
                 batch[key] == val for key, val in batch_args.items()
@@ -46,8 +47,8 @@ class execdb:
                 return i
         raise ValueError(f"No batch found with id: {id}")
 
-    def search_by_params(self, seed, physical_circuits, observable_func_name, limit=10):
-        indices = self._search_batches_indices_by_params(seed, physical_circuits, observable_func_name, limit)
+    def search_by_params(self, batch_args, physical_circuits, observable_func_name, limit=10):
+        indices = self._search_batches_indices_by_params(batch_args, physical_circuits, observable_func_name, limit)
         batches_to_return = [self._data[i] for i in indices]
         return batches_to_return
 
