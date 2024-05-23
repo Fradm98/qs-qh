@@ -1,5 +1,6 @@
 .DS_Store
 *.pyc
+.vscode
 
 src/qs_qh.egg-info/
 Icon?
