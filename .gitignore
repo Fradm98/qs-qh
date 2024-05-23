@@ -6,4 +6,5 @@ src/qs_qh.egg-info/
 Icon?
 
 src/fradm/__pycache__/
+src/fradm/token.py
 src/cobos/__pycache__/

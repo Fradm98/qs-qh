@@ -11,6 +11,7 @@ from qiskit_ibm_runtime import ibm_backend
 
 from fradm.circuits import *
 from fradm.utils import *
+from fradm.token import _name_service, _token
 
 
 def construct_logical_circuit(NUM_QUBITS: int, DEPTH: int, type_circ: QuantumCircuit, assign_params: str, dagger: bool=False):
@@ -98,7 +99,9 @@ def construct_batch_execution(physical_circuit: QuantumCircuit, physical_observa
 
 def construct_batches_execution(LIST_QUBITS: list, LIST_DEPTHS: list, backend=None, stat_shots: int=100, shots: int=4096, err_suppr: int=0, err_mitig: int=0, zne: bool=True, pauli_weight: int=1, type_pauli: str="Z"):    
     if backend == None:
-        backend = least_busy_backend()
+        name = _name_service()
+        token = _token()
+        backend = least_busy_backend(name=name, token=token)
     options = estimator_options(shots=shots, err_suppr=err_suppr, err_mitig=err_mitig, zne=zne)
 
     jobs_batches = []
