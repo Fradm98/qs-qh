@@ -8,3 +8,5 @@ Icon?
 src/fradm/__pycache__/
 token.py
 src/cobos/__pycache__/
+
+*.json
