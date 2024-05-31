@@ -3,20 +3,21 @@ from qiskit_ibm_runtime import QiskitRuntimeService
 import json
 import numpy as np
 from ncon import ncon
+from fradm.token import _token
 
 def call_ibm_account(name: str, channel: str="ibm_quantum", token: str=None):
     try:
         service = QiskitRuntimeService(name=name)
-        print("Use BM quantum ikerbasque collab and save the account")
+        print("Use IBM quantum ikerbasque collab account")
     except:
-        
         service = QiskitRuntimeService(channel=channel, token=token)  # Credentials may be needed    
-        if service.active_account() in service.saved_accounts():
-            print(f"Use {name} account")
-        else:
-            service.save_account(channel=channel, token=token, name=name, overwrite=True)
-        print(f"{name} account saved")
-        print(f"Saved accounts are:\n {[key for key, value in service.saved_accounts().items()]}")
+        for key, value in service.saved_accounts().items():
+            if service.active_account() == key:
+                print(f"Use {name} account")
+            else:
+                service.save_account(channel=channel, token=token, name=name, overwrite=True)
+            print(f"{name} account saved")
+            print(f"Saved accounts are:\n {[key for key, value in service.saved_accounts().items()]}")
     return service
 
 def least_busy_backend(name: str, channel: str="ibm_quantum", token: str=None):

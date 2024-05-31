@@ -13,11 +13,11 @@ def retrieve_job_id(n_qubits, depth, extrapolation_method, mem, filename):
                         ids.append(c_dict['job_id'])
     return ids
 
-def retrieve_results(qubits, depths, zne_extrapolator, mem, zne, service: QiskitRuntimeService):
+def retrieve_results(qubits, depths, zne_extrapolator, mem, zne, stat, service: QiskitRuntimeService):
     mean_errors = []
     for qubit in qubits:
         for depth in depths:
-            job_ids = retrieve_job_id(qubit, depth, zne_extrapolator, mem, f"logs/jobs_qubits_{qubits}_depths_{depths}_pauli-Z_weight_1_stat_shots_3_zne_{zne}_mem_{mem}")
+            job_ids = retrieve_job_id(qubit, depth, zne_extrapolator, mem, f"logs/jobs_qubits_{qubits}_depths_{depths}_pauli-Z_weight_1_stat_shots_{stat}_zne_{zne}_mem_{mem}")
             res = []
             for job_id in job_ids:
                 job = service.job(job_id=job_id)
