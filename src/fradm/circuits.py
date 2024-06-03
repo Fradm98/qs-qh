@@ -72,9 +72,8 @@ class Z2MassiveChainCircuit(QuantumCircuit):
                 self.barrier()
             self.h(qubit=range(num_qubits))
             self.cx(control_qubit=range(0,num_qubits-1), target_qubit=range(1,num_qubits))
-            self.rz(phi=theta, qubit=num_qubits-1)
+            self.rz(phi=theta*self.h2, qubit=num_qubits-1)
             self.cx(control_qubit=range(num_qubits-2,-1,-1), target_qubit=range(num_qubits-1,0,-1))
             self.h(qubit=range(num_qubits))
             if barriers:
-                self.barrier()
                 self.barrier()

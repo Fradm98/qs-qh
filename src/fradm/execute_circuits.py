@@ -33,7 +33,7 @@ def construct_logical_circuit(NUM_QUBITS: int, DEPTH: int, type_circ: QuantumCir
         parameter_values = rng.uniform(-pi, pi, size=logical_circuit.num_parameters)
     elif assign_params == "fixed":
         parameter_values = np.linspace(-pi, pi, num=logical_circuit.num_parameters)
-    parameter_values[0] = 0.3  # Fix interaction strength (specific to MBL circuit)
+        parameter_values[0] = 0.1  # Fix interaction strength (specific to MBL circuit)
     logical_circuit.assign_parameters(parameter_values, inplace=True)
     return logical_circuit
 
@@ -99,7 +99,7 @@ def construct_batch_execution(physical_circuit: QuantumCircuit, physical_observa
         jb.append(dict_batch)
     return jb
 
-def construct_batches_execution(LIST_QUBITS: list, LIST_DEPTHS: list, backend=None, stat_shots: int=100, shots: int=4096, err_suppr: int=0, err_mitig: int=0, zne: bool=True, pauli_weight: int=1, type_pauli: str="Z"):    
+def construct_batches_execution(LIST_QUBITS: list, LIST_DEPTHS: list, backend=None, stat_shots: int=100, shots: int=4096, err_suppr: int=0, err_mitig: int=0, zne: bool=True, pauli_weight: int=1, type_pauli: str="Z", type_circ: str="z2mc"):    
     if backend == None:
         name = _name_service()
         token = _token()
@@ -110,7 +110,7 @@ def construct_batches_execution(LIST_QUBITS: list, LIST_DEPTHS: list, backend=No
     for NUM_QUBITS in LIST_QUBITS: 
         for DEPTH in LIST_DEPTHS:
             print(f"construct logical circuit...")
-            logical_circuit = construct_logical_circuit(NUM_QUBITS=NUM_QUBITS, DEPTH=DEPTH, type_circ="z2mc", assign_params="fixed", dagger=True)
+            logical_circuit = construct_logical_circuit(NUM_QUBITS=NUM_QUBITS, DEPTH=DEPTH, type_circ=type_circ, assign_params="fixed", dagger=True)
             print(f"construct logical observable...") 
             logical_observable = construct_logical_Pauli_observable(NUM_QUBITS=NUM_QUBITS, pauli_weight=pauli_weight, type_pauli=type_pauli)
             print(f"construct physical circuit...")
@@ -127,4 +127,4 @@ def construct_batches_execution(LIST_QUBITS: list, LIST_DEPTHS: list, backend=No
         mem = False
     else:
         mem = True
-    save_jobs(filename=f"logs/jobs_qubits_{LIST_QUBITS}_depths_{LIST_DEPTHS}_pauli-{type_pauli}_weight_{pauli_weight}_stat_shots_{stat_shots}_zne_{zne}_mem_{mem}", jobs=jobs_batches)
+    save_jobs(filename=f"logs/jobs_model_{type_circ}_qubits_{LIST_QUBITS}_depths_{LIST_DEPTHS}_pauli-{type_pauli}_weight_{pauli_weight}_stat_shots_{stat_shots}_zne_{zne}_mem_{mem}", jobs=jobs_batches)
