@@ -14,11 +14,13 @@ from fradm.utils import *
 from fradm.token import _name_service, _token
 
 
-def construct_logical_circuit(NUM_QUBITS: int, DEPTH: int, type_circ: QuantumCircuit, assign_params: str, dagger: bool=False):
+def construct_logical_circuit(NUM_QUBITS: int, DEPTH: int, type_circ: QuantumCircuit, assign_params: str, dagger: bool=True):
     # Base circuit
     if type_circ == "mbl":
         logical_circuit = MBLCircuit(NUM_QUBITS, DEPTH // 2)  # Halved depth
-
+    elif type_circ == "z2mc":
+        logical_circuit = Z2MassiveChainCircuit(NUM_QUBITS, DEPTH // 2, delta=0.1, h1=0.3, h2=0.1)  # Halved depth
+        # display(logical_circuit.draw(output='mpl'))
     if dagger:
         # Compute-uncompute construct (doubles the depth)
         inverse = logical_circuit.inverse()
@@ -108,7 +110,7 @@ def construct_batches_execution(LIST_QUBITS: list, LIST_DEPTHS: list, backend=No
     for NUM_QUBITS in LIST_QUBITS: 
         for DEPTH in LIST_DEPTHS:
             print(f"construct logical circuit...")
-            logical_circuit = construct_logical_circuit(NUM_QUBITS=NUM_QUBITS, DEPTH=DEPTH, type_circ="mbl", assign_params="fixed", dagger=True)
+            logical_circuit = construct_logical_circuit(NUM_QUBITS=NUM_QUBITS, DEPTH=DEPTH, type_circ="z2mc", assign_params="fixed", dagger=True)
             print(f"construct logical observable...") 
             logical_observable = construct_logical_Pauli_observable(NUM_QUBITS=NUM_QUBITS, pauli_weight=pauli_weight, type_pauli=type_pauli)
             print(f"construct physical circuit...")
