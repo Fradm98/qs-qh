@@ -10,8 +10,12 @@ from fradm.utils import pauli_decomposition
 
 # we can subclass the mps to a specific one
 class Z2_chain_massive_mps(MPS):
-    def __init__(self, L, d, model="Z2_chain_massive", chi=None, h1=None, h2=None, w=None):
-        super().__init__(L, d, model, chi, w)
+    def __init__(self, L, d, model="Z2_chain_massive", chi=None, J=None, h1=None, h2=None):
+        """
+        
+        """
+        super().__init__(L, d, model, chi)
+        self.J = J
         self.h1 = h1
         self.h2 = h2
         
@@ -25,17 +29,13 @@ class Z2_chain_massive_mps(MPS):
         X = sparse_pauli_x(n=0,L=1).toarray()
         Z = sparse_pauli_z(n=0,L=1).toarray()
         w_tot = []
+        c1 = [self.J,self.h1]
+        c2 = [1,0]
         for i in range(self.L):
-            if (i % 2) == 0:
-                c1 = 1
-                c2 = 1
-            else:
-                c1 = self.h1
-                c2 = 0
             w = np.array(
-                [[I, c2 * X, O, -c1 * Z],
+                [[I, c2[i%2] * X, O, -c1[i%2] * Z],
                  [O, O, X, O],
-                 [O, O, O, -self.h2 * c2 * X],
+                 [O, O, O, -self.h2 * c2[i%2] * X],
                  [O, O, O, I]]
             )
             w_tot.append(w)
@@ -63,6 +63,47 @@ class Z2_chain_massive_mps(MPS):
         self.w = mpo_tot
         return self
     
+    def interaction_trotter_mpo(self, delta):
+        I = identity(2).toarray()
+        O = np.zeros((2,2))
+        X = sparse_pauli_x(0,1).toarray()
+        w_start = np.asarray([(np.cos(delta*self.h2))**(1/3)*I, (np.sin(delta*self.h2))**(1/3)*X]).reshape((1,2,2,2))
+        w_middle = np.asarray([[(np.cos(delta*self.h2))**(1/3)*I, O],[O, (np.sin(delta*self.h2))**(1/3)*X]])
+        w_end = np.asarray([(np.cos(delta*self.h2))**(1/3)*I, 1j*(np.sin(delta*self.h2))**(1/3)*X]).reshape((2,1,2,2))
+        w_b_1 = ncon([w_start,w_middle,w_end],[[-1,-4,-7,1],[-2,-5,1,2],[-3,-6,2,-8]]).reshape((4,4,2,2))
+        w_b_2 = ncon([w_middle,w_end,w_start],[[-1,-4,-7,1],[-2,-5,1,2],[-3,-6,2,-8]]).reshape((4,4,2,2))
+        w_b_3 = ncon([w_end,w_start,w_middle],[[-1,-4,-7,1],[-2,-5,1,2],[-3,-6,2,-8]]).reshape((4,4,2,2))
+        w_bulk = [w_b_3,w_b_2,w_b_1]
+        w_tot = []
+        for i in range(self.L):
+            if i == 0:
+                w = w_start
+            elif i == 1:
+                w = ncon([w_start,w_middle],[[-1,-3,-5,1],[-2,-4,1,-6]]).reshape((2,4,2,2))
+            elif i > 1 and i < (self.L-2):
+                w = w_bulk[i%3]
+            elif i == (self.L-2):
+                w = ncon([w_end,w_middle],[[-1,-3,-5,1],[-2,-4,1,-6]]).reshape((4,2,2,2))
+            elif i == (self.L-1):
+                w = w_end
+            w_tot.append(w)
+        self.w = w_tot
+        return self
+    
+    def local_trotter_mpo(self,delta):
+        Z = sparse_pauli_z(n=0,L=1).toarray()
+        # divide over 2 to make the second order trotter decomposition
+        c = [self.J/2,self.h1/2]
+        w_tot = [linalg.expm(1j*c[i%2]*delta*Z) for i in range(self.L)]
+        return w_tot
+
+    def second_order_trotter_mpo(self, delta):
+        w_loc = self.local_trotter_mpo(delta)
+        self.interaction_trotter_mpo(delta)
+        w_tot = [ncon([w_loc[i],self.w[i],w_loc[i]],[[-3,1],[-1,-2,1,2],[2,-4]]) for i in range(self.L)]
+        self.w = w_tot
+        return self
+
     def TEBD_Z2_chain(self, params_quench):
 
         # initialize ancilla with a state
@@ -70,22 +111,28 @@ class Z2_chain_massive_mps(MPS):
         self.ancilla_sites = self.sites.copy()
 
         errors = [[0, 0]]
-        entropies = [0
-                     ]
+        entropies = [[0]]
+        schmidt_vals = []
+        exp_vals = []
         trotter_steps = params_quench.get('trotter_steps')
         delta = params_quench.get('delta')
-        h_1 = params_quench.get('h_1')
-        h_2 = params_quench.get('h_2')
-        n_sweeps = params_quench('n_sweeps')
-        conv_tol = params_quench('conv_tol')
-        bond = params_quench('bond')
-        where = params_quench('where')
+        n_sweeps = params_quench.get('n_sweeps')
+        conv_tol = params_quench.get('conv_tol')
+        bond = params_quench.get('bond')
+        where = params_quench.get('where')
+        if where == -1:
+            where = self.L//2
+
+        # Exp val before trotterization
+        for i in range(self.L):
+            self.local_order_param(site=i)
+            exp_vals.append(self.mpo_first_moment().real)
         for trott in range(trotter_steps):
             print(f"------ Trotter steps: {trott} -------")
-            self.mpo_quench(delta, h_1, h_2)
+            self.second_order_trotter_mpo(delta)
             print(f"Bond dim ancilla: {self.ancilla_sites[self.L//2].shape[0]}")
             print(f"Bond dim site: {self.sites[self.L//2].shape[0]}")
-            error, entropy = self.compression(
+            error, entropy, s_mid = self.compression(
                 trunc_tol=False,
                 trunc_chi=True,
                 n_sweeps=n_sweeps,
@@ -94,5 +141,17 @@ class Z2_chain_massive_mps(MPS):
                 where=where,
             )
             self.ancilla_sites = self.sites.copy()
+            self.canonical_form(svd_direction="left")
+            self.canonical_form(svd_direction="right")
+
+            # Exp val during trotterization
+            for i in range(self.L):
+                self.local_order_param(site=i)
+                exp_vals.append(self.mpo_first_moment().real)
+           
             errors.append(error)
             entropies.append(entropy)
+            schmidt_vals.append(s_mid)
+
+        exp_vals = np.array(exp_vals).reshape((trotter_steps+1,self.L))
+        return errors, entropies, schmidt_vals, exp_vals

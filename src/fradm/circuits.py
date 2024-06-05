@@ -66,10 +66,13 @@ class Z2MassiveChainCircuit(QuantumCircuit):
         # phis = ParameterVector("φ", num_qubits)
         
         for layer in range(depth):
+            # matter
             self.rz(phi=theta, qubit=range(0, num_qubits, 2))
+            # gauge
             self.rz(phi=theta*self.h1, qubit=range(1, num_qubits, 2))
             if barriers:
                 self.barrier()
+            # matter-gauge interaction
             self.h(qubit=range(num_qubits))
             self.cx(control_qubit=range(0,num_qubits-1), target_qubit=range(1,num_qubits))
             self.rz(phi=theta*self.h2, qubit=num_qubits-1)
