@@ -61,7 +61,7 @@ def particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_
     circs_to_return = [initial_state_preparation]
     ncircuits_to_iterate = layers // measure_every_layers
     for i in range(1, ncircuits_to_iterate + 1):
-        this_trotter_circuit = FirstOrderTrotter(chain_length, J, h, lamb, final_time*i/ncircuits_to_iterate, i, sqrot_first=False, barriers=True)
+        this_trotter_circuit = FirstOrderTrotter(chain_length, J, h, lamb, final_time*i/ncircuits_to_iterate, i*measure_every_layers, sqrot_first=False, barriers=True)
         this_complete_circuit = initial_state_preparation.compose(this_trotter_circuit)
         circs_to_return.append(this_complete_circuit)
     return circs_to_return
