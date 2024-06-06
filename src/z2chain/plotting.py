@@ -8,5 +8,5 @@ def x_t_plot(site_guge_observable_matrix):
     fig, ax = plt.subplots(1, 1, figsize=[8, 8*site_guge_observable_matrix.shape[0]/site_guge_observable_matrix.shape[1]])
 
     plt.imshow(site_guge_observable_matrix, cmap="inferno")
-    plt.xlabel("Matter sites")
+    plt.xlabel(r"Matter (Even) \& Gauge (Odd) sites")
     plt.ylabel("t")

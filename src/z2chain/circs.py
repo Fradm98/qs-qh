@@ -1,5 +1,6 @@
 from qiskit.circuit import QuantumCircuit, Parameter, InstructionSet
 from qiskit.converters import circuit_to_instruction
+import z2chain.observables as observables
 import numpy as np
 
 class LocalInteractionPropagator(QuantumCircuit):
@@ -35,13 +36,12 @@ class TotalSingleBodyPropagator(QuantumCircuit):
         self.rz(2*t_tau, np.arange(0, self.num_qubits, 2))
         self.rz(2*t_sigma, np.arange(1, self.num_qubits, 2))
 
-
 def FirstOrderTrotter(chain_length, J, h, lamb, t_total, layers, sqrot_first=False, barriers=False):
     t_layer = t_total/layers
     total_interaction_propagator = TotalInteractionPropagator(chain_length).decompose()
-    total_interaction_propagator.assign_parameters([2*lamb/J*t_layer], inplace=True)
+    total_interaction_propagator.assign_parameters([2*lamb*t_layer], inplace=True)
     total_single_body_propagator = TotalSingleBodyPropagator(chain_length)
-    total_single_body_propagator.assign_parameters([2*t_layer, 2*h/J*t_layer], inplace=True)
+    total_single_body_propagator.assign_parameters([2*t_layer*J, 2*h*t_layer], inplace=True)
     if sqrot_first:
         layer = total_single_body_propagator.compose(total_interaction_propagator)
     else:
@@ -49,3 +49,22 @@ def FirstOrderTrotter(chain_length, J, h, lamb, t_total, layers, sqrot_first=Fal
     if barriers:
         layer.barrier()
     return layer.repeat(layers).decompose()
+
+class particle_pair_initial_state(QuantumCircuit):
+    def __init__(self, chain_length, left_particle_position, particle_pair_length=1):
+        nqubits = 2*chain_length - 1
+        super().__init__(nqubits)
+        self.x(range(2*left_particle_position, 2*(left_particle_position + particle_pair_length) + 1))
+
+def particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_pair_left_position, particle_pair_length, final_time, layers, measure_every_layers=1):
+    initial_state_preparation = particle_pair_initial_state(chain_length, particle_pair_left_position, particle_pair_length)
+    circs_to_return = [initial_state_preparation]
+    ncircuits_to_iterate = layers // measure_every_layers
+    for i in range(1, ncircuits_to_iterate + 1):
+        this_trotter_circuit = FirstOrderTrotter(chain_length, J, h, lamb, final_time*i/ncircuits_to_iterate, i, sqrot_first=False, barriers=True)
+        this_complete_circuit = initial_state_preparation.compose(this_trotter_circuit)
+        circs_to_return.append(this_complete_circuit)
+    return circs_to_return
+
+def particle_pair_quench_simulation_pubs(backend, chain_length, J, h, lamb, particle_pair_left_position, particle_pair_length, final_time, layers, measure_every_layers=1):
+    pass
