@@ -1,6 +1,5 @@
 from qiskit.circuit import QuantumCircuit, Parameter, InstructionSet
 from qiskit.converters import circuit_to_instruction
-import z2chain.observables as observables
 import numpy as np
 
 class LocalInteractionPropagator(QuantumCircuit):
@@ -65,6 +64,3 @@ def particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_
         this_complete_circuit = initial_state_preparation.compose(this_trotter_circuit)
         circs_to_return.append(this_complete_circuit)
     return circs_to_return
-
-def particle_pair_quench_simulation_pubs(backend, chain_length, J, h, lamb, particle_pair_left_position, particle_pair_length, final_time, layers, measure_every_layers=1):
-    pass
