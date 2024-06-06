@@ -78,19 +78,26 @@ class execdb:
     def execute_estimator_batch(self, backend, estimator_opt_dict, physical_circuits, observable_generating_func, observable_name=None):
         execute_estimator_batch(backend, estimator_opt_dict, physical_circuits, observable_generating_func, self, observable_name)
 
-def execute_estimator_batch(backend, estimator_opt_dict, physical_circuits, observable_generating_func, job_db=None, observable_name=None):    
+def execute_estimator_batch(backend, estimator_opt_dict, physical_circuits, observable_generating_funcs, job_db=None, observable_name=None):    
     job_objs = []
     layouts = []
+
+    try:
+        observable_generating_funcs = list(observable_generating_funcs)
+    except TypeError:
+        observable_generating_funcs = [observable_generating_funcs]
     
     with Batch(backend=backend) as batch:
         estimator = EstimatorV2(session=batch, options=estimator_opt_dict)
         for physical_circuit in physical_circuits:
             layout = physical_circuit.layout.final_index_layout()
-            logical_observable = observable_generating_func(len(layout))
-            physical_observable = logical_observable.apply_layout(physical_circuit.layout)
-            pub = (physical_circuit, physical_observable)
+            physical_observables = []
+            for observable_generating_func in observable_generating_funcs:
+                logical_observable = observable_generating_func(len(layout))
+                physical_observables.append(logical_observable.apply_layout(physical_circuit.layout))
+            pub = (physical_circuit, physical_observables)
             layouts.append(layout)
-            job_objs.append(estimator.run([pub]))
+            job_objs.append(estimator.run(pub))
     
     if job_db is not None:
         observables_func_name = observable_generating_func.__name__ if observable_name is None else observable_name
