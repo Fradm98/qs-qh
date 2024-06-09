@@ -38,9 +38,9 @@ class TotalSingleBodyPropagator(QuantumCircuit):
 def FirstOrderTrotter(chain_length, J, h, lamb, t_total, layers, sqrot_first=False, barriers=False):
     t_layer = t_total/layers
     total_interaction_propagator = TotalInteractionPropagator(chain_length).decompose()
-    total_interaction_propagator.assign_parameters([2*lamb*t_layer], inplace=True)
+    total_interaction_propagator.assign_parameters([lamb*t_layer], inplace=True)
     total_single_body_propagator = TotalSingleBodyPropagator(chain_length)
-    total_single_body_propagator.assign_parameters([2*t_layer*J, 2*h*t_layer], inplace=True)
+    total_single_body_propagator.assign_parameters([h*t_layer, t_layer*J], inplace=True)
     if sqrot_first:
         layer = total_single_body_propagator.compose(total_interaction_propagator)
     else:
