@@ -5,11 +5,12 @@ def x_t_plot(site_guge_observable_matrix):
     plt.rc("text", usetex=True)
     plt.rc("font", size=24, family="serif", weight="bold")
 
-    fig, ax = plt.subplots(1, 1, figsize=[8, 8])
+    fig, ax = plt.subplots(1, 1, figsize=[12, 8])
 
     plt.imshow(site_guge_observable_matrix, cmap="inferno", aspect=site_guge_observable_matrix.shape[0]/site_guge_observable_matrix.shape[1]/15)
-    plt.xlabel(r"Matter (Even) \& Gauge (Odd) sites")
+    plt.xlabel(r"Sites")
     plt.ylabel("t")
+    plt.tight_layout()
 
 def x_t_plot_jobs(jobs_arr):
     site_gauge_observable_matrix = np.zeros((len(jobs_arr), len(jobs_arr[0].result()[0].data.evs)))
