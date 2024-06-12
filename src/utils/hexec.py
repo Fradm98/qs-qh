@@ -106,6 +106,6 @@ def execute_estimator_batch(backend, estimator_opt_dict, transpiled_circuits, ob
     if job_db is not None:
         observables_func_name = observable_generating_func.__name__ if observable_name is None else observable_name
         job_ids = [job.job_id() for job in job_objs]
-        job_db.add(estimator_opt_dict, transpiled_circuit, observables_func_name, job_ids)
+        job_db.add(estimator_opt_dict, transpiled_circuits, observables_func_name, job_ids)
 
     return job_objs
