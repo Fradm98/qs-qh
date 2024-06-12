@@ -55,12 +55,12 @@ class particle_pair_initial_state(QuantumCircuit):
         super().__init__(nqubits)
         self.x(range(2*left_particle_position, 2*(left_particle_position + particle_pair_length) + 1))
 
-def particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_pair_left_position, particle_pair_length, final_time, layers, measure_every_layers=1):
+def particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_pair_left_position, particle_pair_length, final_time, layers, measure_every_layers=1, barriers=False):
     initial_state_preparation = particle_pair_initial_state(chain_length, particle_pair_left_position, particle_pair_length)
     circs_to_return = [initial_state_preparation]
     ncircuits_to_iterate = layers // measure_every_layers
     for i in range(1, ncircuits_to_iterate + 1):
-        this_trotter_circuit = FirstOrderTrotter(chain_length, J, h, lamb, final_time*i/ncircuits_to_iterate, i*measure_every_layers, sqrot_first=False, barriers=True)
+        this_trotter_circuit = FirstOrderTrotter(chain_length, J, h, lamb, final_time*i/ncircuits_to_iterate, i*measure_every_layers, sqrot_first=False, barriers=barriers)
         this_complete_circuit = initial_state_preparation.compose(this_trotter_circuit)
         circs_to_return.append(this_complete_circuit)
     return circs_to_return
