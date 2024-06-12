@@ -78,7 +78,7 @@ class execdb:
     def execute_estimator_batch(self, backend, estimator_opt_dict, physical_circuits, observable_generating_func, observable_name=None):
         execute_estimator_batch(backend, estimator_opt_dict, physical_circuits, observable_generating_func, self, observable_name)
 
-def execute_estimator_batch(backend, estimator_opt_dict, transpiled_circuit, observable_generating_funcs, job_db=None, observable_name=None):    
+def execute_estimator_batch(backend, estimator_opt_dict, transpiled_circuits, observable_generating_funcs, job_db=None, observable_name=None):    
     job_objs = []
     layouts = []
 
@@ -89,7 +89,7 @@ def execute_estimator_batch(backend, estimator_opt_dict, transpiled_circuit, obs
     
     with Batch(backend=backend) as batch:
         estimator = EstimatorV2(session=batch, options=estimator_opt_dict)
-        for transpiled_circuit in transpiled_circuit:
+        for transpiled_circuit in transpiled_circuits:
             if transpiled_circuit.layout is not None:
                 layout = transpiled_circuit.layout.final_index_layout()
                 mapped_observables = []
