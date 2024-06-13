@@ -8,7 +8,7 @@ def convert_jobs_to_site_gauge_matrix(jobs_arr):
         site_gauge_observable_matrix[i] = (1 - job.result()[0].data.evs)/2
     return site_gauge_observable_matrix
 
-def x_t_plot(site_gauge_observable_matrix):
+def x_t_plot(site_gauge_observable_matrix, filepath=""):
     if type(site_gauge_observable_matrix[0]) is PrimitiveJob:
         site_gauge_observable_matrix = convert_jobs_to_site_gauge_matrix(site_gauge_observable_matrix)
 
@@ -18,11 +18,17 @@ def x_t_plot(site_gauge_observable_matrix):
     fig, ax = plt.subplots(1, 1, figsize=[12, 8])
 
     plt.imshow(site_gauge_observable_matrix, cmap="inferno", aspect=site_gauge_observable_matrix.shape[0]/site_gauge_observable_matrix.shape[1]/15)
+    # plt.title(r"Particle & Gauge occupation")
+    cbar = plt.colorbar()
+    cbar.ax.set_ylabel(r"$(1 - \langle Z \rangle)/2$", labelpad=10)
     plt.xlabel(r"Sites")
     plt.ylabel("t")
     plt.tight_layout()
 
-def discrepancies_plot(exact_site_gauge_observable_matrix, approximated_site_gauge_observable_matrix):
+    if filepath:
+        plt.savefig(filepath, dpi=300)
+
+def discrepancies_plot(exact_site_gauge_observable_matrix, approximated_site_gauge_observable_matrix, filepath=""):
     if type(exact_site_gauge_observable_matrix[0]) is PrimitiveJob:
         exact_site_gauge_observable_matrix = convert_jobs_to_site_gauge_matrix(exact_site_gauge_observable_matrix)
     if type(approximated_site_gauge_observable_matrix[0]) is PrimitiveJob:
@@ -36,7 +42,11 @@ def discrepancies_plot(exact_site_gauge_observable_matrix, approximated_site_gau
     difference = np.abs(exact_site_gauge_observable_matrix - approximated_site_gauge_observable_matrix)
 
     plt.imshow(difference, cmap="bwr", aspect=exact_site_gauge_observable_matrix.shape[0]/exact_site_gauge_observable_matrix.shape[1]/15, norm="log")
-    plt.colorbar()
+    cbar = plt.colorbar()
+    cbar.ax.set_ylabel(r"$| \langle n \rangle_{\mathrm{exact}} - \langle n \rangle_{\mathrm{Trotter}} |$", labelpad=10)
     plt.xlabel(r"Sites")
     plt.ylabel("t")
     plt.tight_layout()
+
+    if filepath:
+        plt.savefig(filepath, dpi=300)
