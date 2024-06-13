@@ -9,7 +9,7 @@ def sparse_hamiltonian_single_qubit_terms(J, h, chain_length):
     sum_of_terms = sparse.csc_array((2**nqubits, 2**nqubits), dtype=complex)
 
     for n in range(chain_length - 1):
-        sum_of_terms += -J*paulis.sparse_pauli_z(2*n, nqubits) - h*paulis.sparse_pauli_x(2*n + 1, nqubits)
+        sum_of_terms += -J*paulis.sparse_pauli_z(2*n, nqubits) - h*paulis.sparse_pauli_z(2*n + 1, nqubits)
     sum_of_terms += -J*paulis.sparse_pauli_z(nqubits - 1, nqubits)
 
     return sum_of_terms
@@ -40,7 +40,7 @@ def sparse_hamiltonian(J, h, lamb, chain_length):
     hamiltonian = sparse.csc_array((2**nqubits, 2**nqubits), dtype=complex)
 
     for n in range(chain_length - 1):
-        hamiltonian += -J*paulis.sparse_pauli_z(2*n, nqubits) - h*paulis.sparse_pauli_x(2*n + 1, nqubits)
+        hamiltonian += -J*paulis.sparse_pauli_z(2*n, nqubits) - h*paulis.sparse_pauli_z(2*n + 1, nqubits)
         hamiltonian += -lamb*(paulis.sparse_pauli_x(2*(n+1), nqubits) @ paulis.sparse_pauli_x(2*n + 1, nqubits) @ paulis.sparse_pauli_x(2*n, nqubits))
     hamiltonian += -paulis.sparse_pauli_z(2*chain_length - 2, nqubits)
 
@@ -108,7 +108,7 @@ def particle_pair_quench_simulation(L, J, h, lamb, particle_pair_left_position, 
     for i in range(steps + 1):
         if print_mode:
             t = i*steps/final_time 
-            print(f"\rt = {t:.04f} / t_f = {t:.04f}".ljust(50), end="")
+            print(f"\rt = {t:.04f} / t_f = {final_time:.04f}".ljust(50), end="")
         this_qubits_occupation = np.array([expectation(current_state, socc_op).real for socc_op in occupation_operators])
         site_gauge_occupation_matrix[i] = this_qubits_occupation
         current_state = base_propagator @ current_state
@@ -136,7 +136,7 @@ def trotter_particle_pair_quench_simulation(L, J, h, lamb, particle_pair_left_po
     for i in range(layers):
         if print_mode:
             t = i*layers/final_time
-            print(f"\rt = {t:.04f} / t_f = {t:.04f} / Trotter_steps = {i} of {layers}".ljust(50), end="")
+            print(f"\rt = {t:.04f} / t_f = {final_time:.04f} / Trotter_steps = {i} of {layers}".ljust(50), end="")
         this_qubits_occupation = np.array([expectation(current_state, socc_op) for socc_op in occupation_operators])
         if i % measure_every_layers == 0:
             site_gauge_occupation_matrix[i // measure_every_layers] = this_qubits_occupation

@@ -38,9 +38,9 @@ class TotalSingleBodyPropagator(QuantumCircuit):
 def FirstOrderTrotter(chain_length, J, h, lamb, t_total, layers, sqrot_first=False, barriers=False):
     t_layer = t_total/layers
     total_interaction_propagator = TotalInteractionPropagator(chain_length).decompose()
-    total_interaction_propagator.assign_parameters([2*lamb*t_layer], inplace=True)
+    total_interaction_propagator.assign_parameters([lamb*t_layer], inplace=True)
     total_single_body_propagator = TotalSingleBodyPropagator(chain_length)
-    total_single_body_propagator.assign_parameters([2*t_layer*J, 2*h*t_layer], inplace=True)
+    total_single_body_propagator.assign_parameters([h*t_layer, t_layer*J], inplace=True)
     if sqrot_first:
         layer = total_single_body_propagator.compose(total_interaction_propagator)
     else:
@@ -55,12 +55,12 @@ class particle_pair_initial_state(QuantumCircuit):
         super().__init__(nqubits)
         self.x(range(2*left_particle_position, 2*(left_particle_position + particle_pair_length) + 1))
 
-def particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_pair_left_position, particle_pair_length, final_time, layers, measure_every_layers=1):
+def particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_pair_left_position, particle_pair_length, final_time, layers, measure_every_layers=1, barriers=False):
     initial_state_preparation = particle_pair_initial_state(chain_length, particle_pair_left_position, particle_pair_length)
     circs_to_return = [initial_state_preparation]
     ncircuits_to_iterate = layers // measure_every_layers
     for i in range(1, ncircuits_to_iterate + 1):
-        this_trotter_circuit = FirstOrderTrotter(chain_length, J, h, lamb, final_time*i/ncircuits_to_iterate, i*measure_every_layers, sqrot_first=False, barriers=True)
+        this_trotter_circuit = FirstOrderTrotter(chain_length, J, h, lamb, final_time*i/ncircuits_to_iterate, i*measure_every_layers, sqrot_first=False, barriers=barriers)
         this_complete_circuit = initial_state_preparation.compose(this_trotter_circuit)
         circs_to_return.append(this_complete_circuit)
     return circs_to_return
