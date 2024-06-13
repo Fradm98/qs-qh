@@ -70,20 +70,18 @@ class Z2_chain_massive_mps(MPS):
         w_start = np.asarray([(np.cos(delta*self.h2))**(1/3)*I, (np.sin(delta*self.h2))**(1/3)*X]).reshape((1,2,2,2))
         w_middle = np.asarray([[(np.cos(delta*self.h2))**(1/3)*I, O],[O, (np.sin(delta*self.h2))**(1/3)*X]])
         w_end = np.asarray([(np.cos(delta*self.h2))**(1/3)*I, 1j*(np.sin(delta*self.h2))**(1/3)*X]).reshape((2,1,2,2))
-        w_b_1 = ncon([w_start,w_middle,w_end],[[-1,-4,-7,1],[-2,-5,1,2],[-3,-6,2,-8]]).reshape((4,4,2,2))
-        w_b_2 = ncon([w_middle,w_end,w_start],[[-1,-4,-7,1],[-2,-5,1,2],[-3,-6,2,-8]]).reshape((4,4,2,2))
-        w_b_3 = ncon([w_end,w_start,w_middle],[[-1,-4,-7,1],[-2,-5,1,2],[-3,-6,2,-8]]).reshape((4,4,2,2))
-        w_bulk = [w_b_3,w_b_2,w_b_1]
+        w_se = ncon([w_start,w_end],[[-1,-3,-5,1],[-2,-4,1,-6]]).reshape((2,2,2,2))
+        w_bulk = [w_se,w_middle]
         w_tot = []
         for i in range(self.L):
             if i == 0:
                 w = w_start
             elif i == 1:
-                w = ncon([w_start,w_middle],[[-1,-3,-5,1],[-2,-4,1,-6]]).reshape((2,4,2,2))
+                w = w_middle
             elif i > 1 and i < (self.L-2):
-                w = w_bulk[i%3]
+                w = w_bulk[i%2]
             elif i == (self.L-2):
-                w = ncon([w_end,w_middle],[[-1,-3,-5,1],[-2,-4,1,-6]]).reshape((4,2,2,2))
+                w = w_middle
             elif i == (self.L-1):
                 w = w_end
             w_tot.append(w)
@@ -127,6 +125,7 @@ class Z2_chain_massive_mps(MPS):
         for i in range(self.L):
             self.local_order_param(site=i)
             exp_vals.append(self.mpo_first_moment().real)
+
         for trott in range(trotter_steps):
             print(f"------ Trotter steps: {trott} -------")
             self.second_order_trotter_mpo(delta)
@@ -141,8 +140,6 @@ class Z2_chain_massive_mps(MPS):
                 where=where,
             )
             self.ancilla_sites = self.sites.copy()
-            self.canonical_form(svd_direction="left")
-            self.canonical_form(svd_direction="right")
 
             # Exp val during trotterization
             for i in range(self.L):
