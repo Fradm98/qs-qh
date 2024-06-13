@@ -5,7 +5,7 @@ import numpy as np
 def convert_jobs_to_site_gauge_matrix(jobs_arr):
     site_gauge_observable_matrix = np.zeros((len(jobs_arr), len(jobs_arr[0].result()[0].data.evs)))
     for i, job in enumerate(jobs_arr):
-        site_gauge_observable_matrix[i] = (1 - job.result()[0].data.evs)/2
+        site_gauge_observable_matrix[i] = (1 - job.result()[0].data.evs[::-1])/2
     return site_gauge_observable_matrix
 
 def x_t_plot(site_gauge_observable_matrix, filepath=""):
@@ -17,7 +17,9 @@ def x_t_plot(site_gauge_observable_matrix, filepath=""):
 
     fig, ax = plt.subplots(1, 1, figsize=[12, 8])
 
-    plt.imshow(site_gauge_observable_matrix, cmap="inferno", aspect=site_gauge_observable_matrix.shape[0]/site_gauge_observable_matrix.shape[1]/15)
+    aspect = site_gauge_observable_matrix.shape[0]/site_gauge_observable_matrix.shape[1]/15
+
+    plt.imshow(site_gauge_observable_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2)
     # plt.title(r"Particle & Gauge occupation")
     cbar = plt.colorbar()
     cbar.ax.set_ylabel(r"$(1 - \langle Z \rangle)/2$", labelpad=10)
