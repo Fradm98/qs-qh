@@ -8,6 +8,15 @@ def convert_jobs_to_site_gauge_matrix(jobs_arr):
         site_gauge_observable_matrix[i] = (1 - job.result()[0].data.evs[::-1])/2
     return site_gauge_observable_matrix
 
+def save_site_gauge_observable_matrix(site_gauge_observable_matrix, filepath, header=""):
+    if type(site_gauge_observable_matrix[0]) is PrimitiveJob:
+        site_gauge_observable_matrix = convert_jobs_to_site_gauge_matrix(site_gauge_observable_matrix)
+
+    np.savetxt(filepath, site_gauge_observable_matrix, header=header)
+
+def load_site_gauge_observable_matrix(filepath):
+    return np.loadtxt(filepath)
+
 def x_t_plot(site_gauge_observable_matrix, filepath=""):
     if type(site_gauge_observable_matrix[0]) is PrimitiveJob:
         site_gauge_observable_matrix = convert_jobs_to_site_gauge_matrix(site_gauge_observable_matrix)
