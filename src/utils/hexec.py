@@ -3,6 +3,7 @@
 #                 IN HARDWARE
 # -----------------------------------------------
 
+from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit_ibm_runtime import Batch, EstimatorV2
 import numpy as np
 import json
@@ -78,14 +79,33 @@ class execdb:
     def execute_estimator_batch(self, backend, estimator_opt_dict, physical_circuits, observable_generating_func, observable_name=None):
         execute_estimator_batch(backend, estimator_opt_dict, physical_circuits, observable_generating_func, self, observable_name)
 
-def execute_estimator_batch(backend, estimator_opt_dict, transpiled_circuits, observable_generating_funcs, job_db=None, observable_name=None):    
-    job_objs = []
-    layouts = []
+def transpile(logical_circuits, optimization_level, backend, largest_layout=None):
+    try:
+        logical_circuits = list(logical_circuits)
+    except TypeError:
+        logical_circuits = [logical_circuits]
 
+    nqubits_arr = [logical_circuit.num_qubits for logical_circuit in logical_circuits]
+    arg_sort = np.argsort(nqubits_arr, kind="stable")
+    logical_circuits = [logical_circuits[i] for i in arg_sort]
+    nqubits_arr, counts = np.unique(nqubits_arr, return_counts=True)
+    physical_circuits = []
+
+    for i, nqubits in enumerate(nqubits_arr):
+        pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=largest_layout[:nqubits])
+        circuits_slice = slice(np.sum(counts[:i]), np.sum(counts[:i]) + counts[i])
+        physical_circuits += pm.run(logical_circuits[circuits_slice])
+    
+    return physical_circuits
+
+def execute_estimator_batch(backend, estimator_opt_dict, transpiled_circuits, observable_generating_funcs, job_db=None, observable_name=None):    
     try:
         observable_generating_funcs = list(observable_generating_funcs)
     except TypeError:
         observable_generating_funcs = [observable_generating_funcs]
+    
+    job_objs = []
+    layouts = []
     
     with Batch(backend=backend) as batch:
         estimator = EstimatorV2(session=batch, options=estimator_opt_dict)
