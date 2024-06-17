@@ -48,10 +48,18 @@ class execdb:
                 return i
         raise ValueError(f"No batch found with id: {id}")
 
-    def search_by_params(self, batch_args, physical_circuits, observable_func_name, limit=10):
+    def search_by_params(self, batch_args, physical_circuits, observable_func_name, limit=10, ibmq_service=None):
         indices = self._search_batches_indices_by_params(batch_args, physical_circuits, observable_func_name, limit)
         batches_to_return = [self._data[i] for i in indices]
-        return batches_to_return
+        if ibmq_service is None:
+            return batches_to_return[0] if len(batches_to_return) == 1 else batches_to_return
+        else:
+            jobs_objs = []
+            for batch in batches_to_return:
+                this_jobs_ids = [job["job_id"] for job in batch["jobs"]]
+                this_jobs_objs = [ibmq_service.job(job_id=job_id) for job_id in this_jobs_ids]
+                jobs_objs.append(this_jobs_objs)
+            return jobs_objs[0] if len(batches_to_return) == 1 else jobs_objs
 
     def search_by_id(self, id):
         ind = self._search_batch_index_by_id(id)
@@ -92,7 +100,7 @@ def transpile(logical_circuits, optimization_level, backend, largest_layout=None
     physical_circuits = []
 
     for i, nqubits in enumerate(nqubits_arr):
-        pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=largest_layout[:nqubits])
+        pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=largest_layout[:nqubits] if largest_layout is not None else None)
         circuits_slice = slice(np.sum(counts[:i]), np.sum(counts[:i]) + counts[i])
         physical_circuits += pm.run(logical_circuits[circuits_slice])
     
