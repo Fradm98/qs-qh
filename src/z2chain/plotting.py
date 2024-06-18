@@ -1,4 +1,4 @@
-from qiskit.primitives.primitive_job import PrimitiveJob
+from qiskit.primitives.base.base_primitive_job import BasePrimitiveJob
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -9,7 +9,7 @@ def convert_jobs_to_site_gauge_matrix(jobs_arr):
     return site_gauge_observable_matrix
 
 def save_site_gauge_observable_matrix(site_gauge_observable_matrix, filepath, header=""):
-    if type(site_gauge_observable_matrix[0]) is PrimitiveJob:
+    if isinstance(site_gauge_observable_matrix[0], BasePrimitiveJob):
         site_gauge_observable_matrix = convert_jobs_to_site_gauge_matrix(site_gauge_observable_matrix)
 
     np.savetxt(filepath, site_gauge_observable_matrix, header=header)
@@ -18,7 +18,7 @@ def load_site_gauge_observable_matrix(filepath):
     return np.loadtxt(filepath)
 
 def x_t_plot(site_gauge_observable_matrix, filepath=""):
-    if type(site_gauge_observable_matrix[0]) is PrimitiveJob:
+    if isinstance(site_gauge_observable_matrix[0], BasePrimitiveJob):
         site_gauge_observable_matrix = convert_jobs_to_site_gauge_matrix(site_gauge_observable_matrix)
 
     plt.rc("text", usetex=True)
@@ -40,9 +40,9 @@ def x_t_plot(site_gauge_observable_matrix, filepath=""):
         plt.savefig(filepath, dpi=300)
 
 def discrepancies_plot(exact_site_gauge_observable_matrix, approximated_site_gauge_observable_matrix, filepath=""):
-    if type(exact_site_gauge_observable_matrix[0]) is PrimitiveJob:
+    if isinstance(exact_site_gauge_observable_matrix[0], BasePrimitiveJob):
         exact_site_gauge_observable_matrix = convert_jobs_to_site_gauge_matrix(exact_site_gauge_observable_matrix)
-    if type(approximated_site_gauge_observable_matrix[0]) is PrimitiveJob:
+    if isinstance(approximated_site_gauge_observable_matrix[0], BasePrimitiveJob):
         approximated_site_gauge_observable_matrix = convert_jobs_to_site_gauge_matrix(approximated_site_gauge_observable_matrix)
 
     plt.rc("text", usetex=True)
