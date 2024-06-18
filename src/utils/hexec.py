@@ -25,11 +25,11 @@ class execdb:
         with open(self.path, "w") as f:
             json.dump(self._data, f, indent=4)
 
-    def _search_batches_indices_by_params(self, batch_args, physical_circuits, observable_func_name, limit=10):
+    def _search_batches_indices_by_params(self, batch_args, physical_circuits, observable_func_name, strict_depth=True, limit=10):
         indices_to_return = []
         observable_func_name = observable_func_name.__name__ if callable(observable_func_name) else observable_func_name
         for i, batch in enumerate(self._data[::-1]):
-            is_equal = all([
+            is_equal = ([
                 batch[key] == val for key, val in batch_args.items()
             ]
             +
@@ -38,7 +38,8 @@ class execdb:
                 np.array_equal(batch["depths_arr"], sorted(list({physical_circuit.depth() for physical_circuit in physical_circuits}))),
                 batch["observables_func_name"] == observable_func_name
             ])
-            if is_equal: indices_to_return.append(len(self._data) - 1 - i)
+            if not strict_depth: del is_equal[-2]
+            if all(is_equal): indices_to_return.append(len(self._data) - 1 - i)
             if len(indices_to_return) > limit: break
         return indices_to_return
     
@@ -48,8 +49,8 @@ class execdb:
                 return i
         raise ValueError(f"No batch found with id: {id}")
 
-    def search_by_params(self, batch_args, physical_circuits, observable_func_name, limit=10, ibmq_service=None):
-        indices = self._search_batches_indices_by_params(batch_args, physical_circuits, observable_func_name, limit)
+    def search_by_params(self, batch_args, physical_circuits, observable_func_name, strict_depth=True, ibmq_service=None, limit=10):
+        indices = self._search_batches_indices_by_params(batch_args, physical_circuits, observable_func_name, strict_depth, limit)
         batches_to_return = [self._data[i] for i in indices]
         if ibmq_service is None:
             return batches_to_return[0] if len(batches_to_return) == 1 else batches_to_return
