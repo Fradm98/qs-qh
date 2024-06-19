@@ -1,12 +1,17 @@
 from qiskit.primitives.base.base_primitive_job import BasePrimitiveJob
+from qiskit_ibm_runtime.runtime_job_v2 import RuntimeJobFailureError
 import matplotlib.pyplot as plt
 import numpy as np
 
 def convert_jobs_to_site_gauge_matrix(jobs_arr):
     site_gauge_observable_matrix = np.zeros((len(jobs_arr), len(jobs_arr[0].result()[0].data.evs)))
     for i, job in enumerate(jobs_arr):
-        site_gauge_observable_matrix[i] = (1 - job.result()[0].data.evs[::-1])/2
-    return site_gauge_observable_matrix
+        try:
+            site_gauge_observable_matrix[i] = (1 - job.result()[0].data.evs[::-1])/2
+        except RuntimeJobFailureError as e:
+            print(f"WARNING: Jobs with i > {i} failed, the plot will be shorter than expected")
+            break
+    return site_gauge_observable_matrix[:i+1]
 
 def save_site_gauge_observable_matrix(site_gauge_observable_matrix, filepath, header=""):
     if isinstance(site_gauge_observable_matrix[0], BasePrimitiveJob):
