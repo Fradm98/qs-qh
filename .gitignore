@@ -6,7 +6,7 @@ src/qs_qh.egg-info/
 Icon?
 
 src/fradm/__pycache__/
-token.py
+tokens.py
 src/cobos/__pycache__/
 
 *.json

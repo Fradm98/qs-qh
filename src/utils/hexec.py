@@ -3,6 +3,8 @@
 #                 IN HARDWARE
 # -----------------------------------------------
 
+from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
+from qiskit_ibm_runtime.runtime_job_v2 import RuntimeJobFailureError
 from qiskit_ibm_runtime import Batch, EstimatorV2
 import numpy as np
 import json
@@ -24,11 +26,11 @@ class execdb:
         with open(self.path, "w") as f:
             json.dump(self._data, f, indent=4)
 
-    def _search_batches_indices_by_params(self, batch_args, physical_circuits, observable_func_name, limit=10):
+    def _search_batches_indices_by_params(self, batch_args, physical_circuits, observable_func_name, strict_depth=True, limit=10):
         indices_to_return = []
         observable_func_name = observable_func_name.__name__ if callable(observable_func_name) else observable_func_name
         for i, batch in enumerate(self._data[::-1]):
-            is_equal = all([
+            is_equal = ([
                 batch[key] == val for key, val in batch_args.items()
             ]
             +
@@ -37,7 +39,8 @@ class execdb:
                 np.array_equal(batch["depths_arr"], sorted(list({physical_circuit.depth() for physical_circuit in physical_circuits}))),
                 batch["observables_func_name"] == observable_func_name
             ])
-            if is_equal: indices_to_return.append(len(self._data) - 1 - i)
+            if not strict_depth: del is_equal[-2]
+            if all(is_equal): indices_to_return.append(len(self._data) - 1 - i)
             if len(indices_to_return) > limit: break
         return indices_to_return
     
@@ -47,10 +50,21 @@ class execdb:
                 return i
         raise ValueError(f"No batch found with id: {id}")
 
-    def search_by_params(self, batch_args, physical_circuits, observable_func_name, limit=10):
-        indices = self._search_batches_indices_by_params(batch_args, physical_circuits, observable_func_name, limit)
+    def search_by_params(self, batch_args, physical_circuits, observable_func_name, strict_depth=True, ibmq_service=None, limit=10):
+        indices = self._search_batches_indices_by_params(batch_args, physical_circuits, observable_func_name, strict_depth, limit)
         batches_to_return = [self._data[i] for i in indices]
-        return batches_to_return
+        if ibmq_service is None:
+            return batches_to_return[0] if len(batches_to_return) == 1 else batches_to_return
+        else:
+            jobs_objs = []
+            for batch in batches_to_return:
+                try:
+                    this_jobs_ids = [job["job_id"] for job in batch["jobs"]]
+                    this_jobs_objs = [ibmq_service.job(job_id=job_id) for job_id in this_jobs_ids]
+                    jobs_objs.append(this_jobs_objs)
+                except RuntimeJobFailureError as e:
+                    print(f"WARNING: One of the jobs failed to load. Reason: {e}")
+            return jobs_objs[0] if len(batches_to_return) == 1 else jobs_objs
 
     def search_by_id(self, id):
         ind = self._search_batch_index_by_id(id)
@@ -78,14 +92,33 @@ class execdb:
     def execute_estimator_batch(self, backend, estimator_opt_dict, physical_circuits, observable_generating_func, observable_name=None):
         execute_estimator_batch(backend, estimator_opt_dict, physical_circuits, observable_generating_func, self, observable_name)
 
-def execute_estimator_batch(backend, estimator_opt_dict, transpiled_circuits, observable_generating_funcs, job_db=None, observable_name=None):    
-    job_objs = []
-    layouts = []
+def transpile(logical_circuits, optimization_level, backend, largest_layout=None):
+    try:
+        logical_circuits = list(logical_circuits)
+    except TypeError:
+        logical_circuits = [logical_circuits]
 
+    nqubits_arr = [logical_circuit.num_qubits for logical_circuit in logical_circuits]
+    arg_sort = np.argsort(nqubits_arr, kind="stable")
+    logical_circuits = [logical_circuits[i] for i in arg_sort]
+    nqubits_arr, counts = np.unique(nqubits_arr, return_counts=True)
+    physical_circuits = []
+
+    for i, nqubits in enumerate(nqubits_arr):
+        pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=largest_layout[:nqubits] if largest_layout is not None else None)
+        circuits_slice = slice(np.sum(counts[:i]), np.sum(counts[:i]) + counts[i])
+        physical_circuits += pm.run(logical_circuits[circuits_slice])
+    
+    return physical_circuits
+
+def execute_estimator_batch(backend, estimator_opt_dict, transpiled_circuits, observable_generating_funcs, job_db=None, observable_name=None):    
     try:
         observable_generating_funcs = list(observable_generating_funcs)
     except TypeError:
         observable_generating_funcs = [observable_generating_funcs]
+    
+    job_objs = []
+    layouts = []
     
     with Batch(backend=backend) as batch:
         estimator = EstimatorV2(session=batch, options=estimator_opt_dict)
