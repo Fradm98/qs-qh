@@ -4,7 +4,6 @@
 # -----------------------------------------------
 
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
-from qiskit_ibm_runtime.runtime_job_v2 import RuntimeJobFailureError
 from qiskit_ibm_runtime import Batch, EstimatorV2
 import numpy as np
 import json
@@ -58,12 +57,9 @@ class execdb:
         else:
             jobs_objs = []
             for batch in batches_to_return:
-                try:
-                    this_jobs_ids = [job["job_id"] for job in batch["jobs"]]
-                    this_jobs_objs = [ibmq_service.job(job_id=job_id) for job_id in this_jobs_ids]
-                    jobs_objs.append(this_jobs_objs)
-                except RuntimeJobFailureError as e:
-                    print(f"WARNING: One of the jobs failed to load. Reason: {e}")
+                this_jobs_ids = [job["job_id"] for job in batch["jobs"]]
+                this_jobs_objs = [ibmq_service.job(job_id=job_id) for job_id in this_jobs_ids]
+                jobs_objs.append(this_jobs_objs)
             return jobs_objs[0] if len(batches_to_return) == 1 else jobs_objs
 
     def search_by_id(self, id):
