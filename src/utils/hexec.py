@@ -104,8 +104,10 @@ def transpile(logical_circuits, optimization_level, backend, largest_layout=None
         pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=largest_layout[:nqubits] if largest_layout is not None else None)
         circuits_slice = slice(np.sum(counts[:i]), np.sum(counts[:i]) + counts[i])
         physical_circuits += pm.run(logical_circuits[circuits_slice])
-    
-    return physical_circuits
+    if len(physical_circuits) > 1:
+        return physical_circuits
+    else:
+        return physical_circuits[0]
 
 def execute_estimator_batch(backend, estimator_opt_dict, transpiled_circuits, observable_generating_funcs, job_db=None, observable_name=None):    
     try:
