@@ -11,7 +11,7 @@ def convert_jobs_to_site_gauge_matrix(jobs_arr):
         except RuntimeJobFailureError as e:
             print(f"WARNING: Jobs with i > {i} failed, the plot will be shorter than expected")
             break
-    return site_gauge_observable_matrix[:i+1]
+    return site_gauge_observable_matrix[:i]
 
 def save_site_gauge_observable_matrix(site_gauge_observable_matrix, filepath, header=""):
     if isinstance(site_gauge_observable_matrix[0], BasePrimitiveJob):
@@ -38,17 +38,21 @@ def x_t_plot(site_gauge_observable_matrix, filepath=""):
     cbar = plt.colorbar()
     cbar.ax.set_ylabel(r"$(1 - \langle Z \rangle)/2$", labelpad=10)
     plt.xlabel(r"Sites")
-    plt.ylabel("t")
+    plt.ylabel("step")
     plt.tight_layout()
 
     if filepath:
-        plt.savefig(filepath, dpi=300)
+        plt.savefig(filepath, dpi=300, facecolor="none")
 
 def discrepancies_plot(exact_site_gauge_observable_matrix, approximated_site_gauge_observable_matrix, filepath=""):
     if isinstance(exact_site_gauge_observable_matrix[0], BasePrimitiveJob):
         exact_site_gauge_observable_matrix = convert_jobs_to_site_gauge_matrix(exact_site_gauge_observable_matrix)
     if isinstance(approximated_site_gauge_observable_matrix[0], BasePrimitiveJob):
         approximated_site_gauge_observable_matrix = convert_jobs_to_site_gauge_matrix(approximated_site_gauge_observable_matrix)
+
+    max_len = np.min([exact_site_gauge_observable_matrix.shape[0], approximated_site_gauge_observable_matrix.shape[0]])
+    exact_site_gauge_observable_matrix = exact_site_gauge_observable_matrix[:max_len]
+    approximated_site_gauge_observable_matrix = approximated_site_gauge_observable_matrix[:max_len]
 
     plt.rc("text", usetex=True)
     plt.rc("font", size=24, family="serif", weight="bold")
@@ -57,12 +61,14 @@ def discrepancies_plot(exact_site_gauge_observable_matrix, approximated_site_gau
 
     difference = np.abs(exact_site_gauge_observable_matrix - approximated_site_gauge_observable_matrix)
 
-    plt.imshow(difference, cmap="bwr", aspect=exact_site_gauge_observable_matrix.shape[0]/exact_site_gauge_observable_matrix.shape[1]/15, norm="log")
+    aspect = difference.shape[0]/difference.shape[1]/15
+
+    plt.imshow(difference, cmap="bwr", aspect=aspect if aspect > 1/2 else 1/2, norm="log")
     cbar = plt.colorbar()
     cbar.ax.set_ylabel(r"$| \langle n \rangle_{\mathrm{exact}} - \langle n \rangle_{\mathrm{Trotter}} |$", labelpad=10)
     plt.xlabel(r"Sites")
-    plt.ylabel("t")
+    plt.ylabel("step")
     plt.tight_layout()
 
     if filepath:
-        plt.savefig(filepath, dpi=300)
+        plt.savefig(filepath, dpi=300, facecolor="none")
