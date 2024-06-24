@@ -1,3 +1,4 @@
+from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit.circuit import QuantumCircuit, Parameter, InstructionSet
 from qiskit.converters import circuit_to_instruction
 import numpy as np
@@ -49,6 +50,16 @@ def FirstOrderTrotter(chain_length, J, h, lamb, t_total, layers, sqrot_first=Fal
         layer.barrier()
     return layer.repeat(layers).decompose()
 
+def SecondOrderTrotter(chain_length, J, h, lamb, t_total, layers, barriers=False):
+    t_layer = t_total/layers
+    total_interaction_propagator = TotalInteractionPropagator(chain_length).decompose()
+    total_interaction_propagator.assign_parameters([lamb*t_layer], inplace=True)
+    total_single_body_propagator = TotalSingleBodyPropagator(chain_length)
+    total_single_body_propagator.assign_parameters([h*t_layer/2, t_layer*J/2], inplace=True)
+    layer = total_single_body_propagator.compose(total_interaction_propagator).compose(total_single_body_propagator)
+    if barriers: layer.barrier()
+    return layer.repeat(layers).decompose()
+
 class particle_pair_initial_state(QuantumCircuit):
     def __init__(self, chain_length, left_particle_position, particle_pair_length=1):
         nqubits = 2*chain_length - 1
@@ -60,7 +71,20 @@ def particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_
     circs_to_return = [initial_state_preparation]
     ncircuits_to_iterate = layers // measure_every_layers
     for i in range(1, ncircuits_to_iterate + 1):
-        this_trotter_circuit = FirstOrderTrotter(chain_length, J, h, lamb, final_time*i/ncircuits_to_iterate, i*measure_every_layers, sqrot_first=False, barriers=barriers)
+        this_trotter_circuit = SecondOrderTrotter(chain_length, J, h, lamb, final_time*i/ncircuits_to_iterate, i*measure_every_layers, barriers=barriers)
         this_complete_circuit = initial_state_preparation.compose(this_trotter_circuit)
         circs_to_return.append(this_complete_circuit)
+    return circs_to_return
+
+def physical_particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_pair_left_position, particle_pair_length, final_time, layers, backend, optimization_level, layout=None, measure_every_layers=1, barriers=False):
+    initial_state_preparation_circ = particle_pair_initial_state(chain_length, particle_pair_left_position, particle_pair_length)
+    logical_trotter_layer_circ = SecondOrderTrotter(chain_length, J, h, lamb, final_time/layers, 1, barriers)
+    pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=layout[:logical_trotter_layer_circ.num_qubits] if layout is not None else None)
+    physical_state_preparation_circuit = pm.run(initial_state_preparation_circ)
+    physical_trotter_layer_circ = pm.run(logical_trotter_layer_circ)
+    circs_to_return = [physical_state_preparation_circuit]
+    niterations = layers // measure_every_layers
+    for i in range(1, niterations + 1):
+        this_circuit = physical_state_preparation_circuit.compose(physical_trotter_layer_circ.repeat(i*measure_every_layers).decompose())
+        circs_to_return.append(this_circuit)
     return circs_to_return
