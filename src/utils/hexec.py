@@ -30,7 +30,7 @@ class execdb:
         observable_func_name = observable_func_name.__name__ if callable(observable_func_name) else observable_func_name
         for i, batch in enumerate(self._data[::-1]):
             is_equal = ([
-                batch[key] == val for key, val in batch_args.items()
+                batch.get(key, None) == val for key, val in batch_args.items()
             ]
             +
             [
