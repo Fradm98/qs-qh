@@ -40,7 +40,7 @@ class execdb:
             ])
             if not strict_depth: del is_equal[-2]
             if all(is_equal): indices_to_return.append(len(self._data) - 1 - i)
-            if len(indices_to_return) > limit: break
+            if len(indices_to_return) >= limit: break
         return indices_to_return
     
     def _search_batch_index_by_id(self, id):
