@@ -1,6 +1,7 @@
 from qiskit.converters import circuit_to_instruction, circuit_to_dag, dag_to_circuit
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
-from qiskit.transpiler.passes import Optimize1qGates
+from qiskit.transpiler.passes import Optimize1qGates, SetLayout, ApplyLayout
+from qiskit.transpiler import PassManager, StagedPassManager
 from qiskit.circuit import QuantumCircuit, Parameter
 import numpy as np
 
@@ -85,9 +86,11 @@ def physical_particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, 
     physical_trotter_layer_circ = pm.run(logical_trotter_layer_circ)
     circs_to_return = [physical_state_preparation_circuit]
     niterations = layers // measure_every_layers
-    sqg_optimizator = Optimize1qGates(target=backend)
+    layout_pm = PassManager([SetLayout(layout=list(range(physical_trotter_layer_circ.num_qubits))), ApplyLayout()])
+    sqcancel_pm = PassManager([Optimize1qGates(target=backend)])
+    sqopt_pm = StagedPassManager(stages=["optimization", "layout"], optimization=sqcancel_pm, layout=layout_pm)
     for i in range(1, niterations + 1):
         this_circuit = physical_state_preparation_circuit.compose(physical_trotter_layer_circ.repeat(i*measure_every_layers).decompose())
-        this_circuit = dag_to_circuit(sqg_optimizator.run(circuit_to_dag(this_circuit)))
+        this_circuit = sqopt_pm.run(this_circuit)
         circs_to_return.append(this_circuit)
     return circs_to_return
