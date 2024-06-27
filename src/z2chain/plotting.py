@@ -4,8 +4,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 def convert_jobs_to_site_gauge_matrix(jobs_arr):
-    site_gauge_observable_matrix = np.zeros((len(jobs_arr), len(jobs_arr[0].result()[0].data.evs)))
-    for i, job in enumerate(jobs_arr):
+    site_gauge_observable_matrix = np.zeros((len(jobs_arr), len(first_job_result := jobs_arr[0].result()[0].data.evs)))
+    site_gauge_observable_matrix[0] = (1 - first_job_result[::-1])/2
+    for i, job in enumerate(jobs_arr[1::], start=1):
         try:
             site_gauge_observable_matrix[i] = (1 - job.result()[0].data.evs[::-1])/2
         except RuntimeJobFailureError as e:
