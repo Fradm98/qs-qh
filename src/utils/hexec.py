@@ -30,7 +30,7 @@ class execdb:
         observable_func_name = observable_func_name.__name__ if callable(observable_func_name) else observable_func_name
         for i, batch in enumerate(self._data[::-1]):
             is_equal = ([
-                batch[key] == val for key, val in batch_args.items()
+                batch.get(key, None) == val for key, val in batch_args.items()
             ]
             +
             [
@@ -40,7 +40,7 @@ class execdb:
             ])
             if not strict_depth: del is_equal[-2]
             if all(is_equal): indices_to_return.append(len(self._data) - 1 - i)
-            if len(indices_to_return) > limit: break
+            if len(indices_to_return) >= limit: break
         return indices_to_return
     
     def _search_batch_index_by_id(self, id):
@@ -104,8 +104,10 @@ def transpile(logical_circuits, optimization_level, backend, largest_layout=None
         pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=largest_layout[:nqubits] if largest_layout is not None else None)
         circuits_slice = slice(np.sum(counts[:i]), np.sum(counts[:i]) + counts[i])
         physical_circuits += pm.run(logical_circuits[circuits_slice])
-    
-    return physical_circuits
+    if len(physical_circuits) > 1:
+        return physical_circuits
+    else:
+        return physical_circuits[0]
 
 def execute_estimator_batch(backend, estimator_opt_dict, transpiled_circuits, observable_generating_funcs, job_db=None, observable_name=None):    
     try:
