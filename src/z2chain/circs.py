@@ -1,8 +1,10 @@
-from qiskit.converters import circuit_to_instruction, circuit_to_dag, dag_to_circuit
+from qiskit.transpiler.passes import Optimize1qGates, SetLayout, ApplyLayout, DenseLayout, FullAncillaAllocation
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
-from qiskit.transpiler.passes import Optimize1qGates, SetLayout, ApplyLayout
-from qiskit.transpiler import PassManager, StagedPassManager
+from qiskit.transpiler import PassManager, StagedPassManager, Layout
 from qiskit.circuit import QuantumCircuit, Parameter
+from qiskit.converters import circuit_to_instruction
+from utils.circs import remove_idle_qwires
+from qiskit import QuantumRegister
 import numpy as np
 
 class LocalInteractionPropagator(QuantumCircuit):
@@ -81,16 +83,26 @@ def particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_
 def physical_particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_pair_left_position, particle_pair_length, final_time, layers, backend, optimization_level, layout=None, measure_every_layers=1, barriers=False):
     initial_state_preparation_circ = particle_pair_initial_state(chain_length, particle_pair_left_position, particle_pair_length)
     logical_trotter_layer_circ = SecondOrderTrotter(chain_length, J, h, lamb, final_time/layers, 1, barriers)
-    pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=layout[:logical_trotter_layer_circ.num_qubits] if layout is not None else None)
+    layout = layout[:logical_trotter_layer_circ.num_qubits] if layout is not None else None
+    pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=layout)
     physical_state_preparation_circuit = pm.run(initial_state_preparation_circ)
     physical_trotter_layer_circ = pm.run(logical_trotter_layer_circ)
     circs_to_return = [physical_state_preparation_circuit]
     niterations = layers // measure_every_layers
-    layout_pm = PassManager([SetLayout(layout=list(range(physical_trotter_layer_circ.num_qubits))), ApplyLayout()])
-    sqcancel_pm = PassManager([Optimize1qGates(target=backend)])
-    sqopt_pm = StagedPassManager(stages=["optimization", "layout"], optimization=sqcancel_pm, layout=layout_pm)
     for i in range(1, niterations + 1):
         this_circuit = physical_state_preparation_circuit.compose(physical_trotter_layer_circ.repeat(i*measure_every_layers).decompose())
+        this_circuit = remove_idle_qwires(this_circuit)
+        if i == 1:
+            if layout is not None:
+                layout_dict = {layout[i]:this_circuit.qubits[i] for i in range(this_circuit.num_qubits)}
+                ancilla_reg = QuantumRegister(backend.num_qubits - this_circuit.num_qubits, "ancilla")
+                remaining_qubits_inds = set(range(backend.num_qubits)) - set(layout[:this_circuit.num_qubits])
+                layout_dict = layout_dict | {qbind: ancilla_reg._bits[i] for i, qbind in enumerate(remaining_qubits_inds)}
+                layout_pm = PassManager([SetLayout(layout=Layout(layout_dict)), ApplyLayout()])
+            else:
+                layout_pm = PassManager([DenseLayout(target=backend.target), FullAncillaAllocation(coupling_map=backend.target), ApplyLayout()])
+            sqcancel_pm = PassManager([Optimize1qGates(target=backend.target)])
+            sqopt_pm = StagedPassManager(stages=["layout", "optimization"], layout=layout_pm, optimization=sqcancel_pm)
         this_circuit = sqopt_pm.run(this_circuit)
         circs_to_return.append(this_circuit)
     return circs_to_return
