@@ -4,7 +4,7 @@
 # -----------------------------------------------
 
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
-from qiskit_ibm_runtime import Batch, EstimatorV2
+from qiskit_ibm_runtime import Batch, EstimatorV2, SamplerV2
 import numpy as np
 import json
 import os
@@ -108,35 +108,76 @@ def transpile(logical_circuits, optimization_level, backend, largest_layout=None
         return physical_circuits
     else:
         return physical_circuits[0]
-
-def execute_estimator_batch(backend, estimator_opt_dict, transpiled_circuits, observable_generating_funcs, job_db=None, observable_name=None):    
+    
+def map_obs_to_circs(transpiled_circuits, observable_generating_funcs, return_layouts=False):
     try:
         observable_generating_funcs = list(observable_generating_funcs)
     except TypeError:
         observable_generating_funcs = [observable_generating_funcs]
     
-    job_objs = []
-    layouts = []
+    mapped_observables = []
+    if return_layouts: layouts = []
+    for transpiled_circuit in transpiled_circuits:
+        if transpiled_circuit.layout is not None:
+            layout = transpiled_circuit.layout.final_index_layout()
+            this_mapped_observables = []
+            for observable_generating_func in observable_generating_funcs:
+                logical_observable = observable_generating_func(len(layout))
+                this_mapped_observables.append(logical_observable.apply_layout(transpiled_circuit.layout))
+            if return_layouts: layouts.append(layout)
+        else:
+            this_mapped_observables = [observable_generating_func(transpiled_circuit.num_qubits) for observable_generating_func in observable_generating_funcs]
+            if return_layouts: layouts.append(list(range(transpiled_circuit.num_qubits)))
+        mapped_observables.append(this_mapped_observables)
+    if return_layouts:
+        return mapped_observables, layout
+    else:
+        return mapped_observables
     
+def check_and_measure_active_qubits(circuit):
+    if not circuit.qregs:
+        circuit.measure_active()
+
+def execute_estimator_batch(backend, estimator_opt_dict, transpiled_circuits, observable_generating_funcs, job_db=None, observable_name=None):    
+    mapped_observables =  map_obs_to_circs(transpiled_circuits, observable_generating_funcs)
+    job_objs = []
+
     with Batch(backend=backend) as batch:
         estimator = EstimatorV2(session=batch, options=estimator_opt_dict)
-        for transpiled_circuit in transpiled_circuits:
-            if transpiled_circuit.layout is not None:
-                layout = transpiled_circuit.layout.final_index_layout()
-                mapped_observables = []
-                for observable_generating_func in observable_generating_funcs:
-                    logical_observable = observable_generating_func(len(layout))
-                    mapped_observables.append(logical_observable.apply_layout(transpiled_circuit.layout))
-                layouts.append(layout)
-            else:
-                mapped_observables = [observable_generating_func(transpiled_circuit.num_qubits) for observable_generating_func in observable_generating_funcs]
-                layouts.append(list(range(transpiled_circuit.num_qubits)))
-            pub = (transpiled_circuit, mapped_observables)
+        for circ, obs in zip(transpiled_circuits, mapped_observables):
+            pub = (circ, obs)
             job_objs.append(estimator.run([pub]))
     
     if job_db is not None:
-        observables_func_name = observable_generating_func.__name__ if observable_name is None else observable_name
+        observables_func_name = observable_generating_funcs.__name__ if observable_name is None else observable_name
         job_ids = [job.job_id() for job in job_objs]
         job_db.add(estimator_opt_dict, transpiled_circuits, observables_func_name, job_ids)
 
     return job_objs
+
+def execute_sampler_batch(backend, sampler_opt_dict, transpiled_circuits, job_db=None):
+    job_objs = []
+
+    with Batch(backend=backend) as batch:
+        sampler = SamplerV2(mode=batch, options=sampler_opt_dict)
+        for circ in transpiled_circuits:
+            check_and_measure_active_qubits(circ)
+            job_objs.append(sampler.run([circ]))
+
+    if job_db is not None:
+        job_ids = [job.job_id() for job in job_objs]
+        job_db.add(sampler_opt_dict, transpiled_circuits, "Sampler", job_ids)
+
+    return job_objs
+
+def measure_post_selected_observables(sampler_jobs_objs, observable_strings_generating_funcs, postselect_validation_func):
+    raise NotImplementedError("Still working on it")
+    
+    try:
+        observable_generating_funcs = list(observable_generating_funcs)
+    except TypeError:
+        observable_generating_funcs = [observable_generating_funcs]
+    
+    circ_observable_array = np.zeros((len(sampler_jobs_objs, len(observable_generating_funcs))))
+    for job in sampler_jobs_objs:
+        pass
