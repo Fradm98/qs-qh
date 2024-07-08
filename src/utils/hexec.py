@@ -5,6 +5,7 @@
 
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit_ibm_runtime import Batch, EstimatorV2, SamplerV2
+from utils.circs import check_and_measure_active_qubits
 import numpy as np
 import json
 import os
@@ -133,10 +134,6 @@ def map_obs_to_circs(transpiled_circuits, observable_generating_funcs, return_la
         return mapped_observables, layout
     else:
         return mapped_observables
-    
-def check_and_measure_active_qubits(circuit):
-    if not circuit.qregs:
-        circuit.measure_active()
 
 def execute_estimator_batch(backend, estimator_opt_dict, transpiled_circuits, observable_generating_funcs, job_db=None, observable_name=None):    
     mapped_observables =  map_obs_to_circs(transpiled_circuits, observable_generating_funcs)
@@ -161,7 +158,7 @@ def execute_sampler_batch(backend, sampler_opt_dict, transpiled_circuits, job_db
     with Batch(backend=backend) as batch:
         sampler = SamplerV2(mode=batch, options=sampler_opt_dict)
         for circ in transpiled_circuits:
-            check_and_measure_active_qubits(circ)
+            circ = check_and_measure_active_qubits(circ)
             job_objs.append(sampler.run([circ]))
 
     if job_db is not None:
@@ -169,15 +166,3 @@ def execute_sampler_batch(backend, sampler_opt_dict, transpiled_circuits, job_db
         job_db.add(sampler_opt_dict, transpiled_circuits, "Sampler", job_ids)
 
     return job_objs
-
-def measure_post_selected_observables(sampler_jobs_objs, observable_strings_generating_funcs, postselect_validation_func):
-    raise NotImplementedError("Still working on it")
-    
-    try:
-        observable_generating_funcs = list(observable_generating_funcs)
-    except TypeError:
-        observable_generating_funcs = [observable_generating_funcs]
-    
-    circ_observable_array = np.zeros((len(sampler_jobs_objs, len(observable_generating_funcs))))
-    for job in sampler_jobs_objs:
-        pass
