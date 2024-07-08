@@ -95,14 +95,11 @@ def physical_particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, 
         if i == 1:
             if layout is not None:
                 layout_dict = {layout[i]:this_circuit.qubits[i] for i in range(this_circuit.num_qubits)}
-                ancilla_reg = QuantumRegister(backend.num_qubits - this_circuit.num_qubits, "ancilla")
-                remaining_qubits_inds = set(range(backend.num_qubits)) - set(layout[:this_circuit.num_qubits])
-                layout_dict = layout_dict | {qbind: ancilla_reg._bits[i] for i, qbind in enumerate(remaining_qubits_inds)}
-                layout_pm = PassManager([SetLayout(layout=Layout(layout_dict)), ApplyLayout()])
+                layout_pm = PassManager([SetLayout(layout=Layout(layout_dict)), FullAncillaAllocation(coupling_map=backend.target), ApplyLayout()])
             else:
                 layout_pm = PassManager([DenseLayout(target=backend.target), FullAncillaAllocation(coupling_map=backend.target), ApplyLayout()])
             sqcancel_pm = PassManager([Optimize1qGates(target=backend.target)])
-            sqopt_pm = StagedPassManager(stages=["layout", "optimization"], layout=layout_pm, optimization=sqcancel_pm)
+            sqopt_pm = StagedPassManager(stages=["optimization", "layout"], layout=layout_pm, optimization=sqcancel_pm)
         this_circuit = sqopt_pm.run(this_circuit)
         circs_to_return.append(this_circuit)
     return circs_to_return
