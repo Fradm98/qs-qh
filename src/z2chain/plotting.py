@@ -23,7 +23,7 @@ def save_site_gauge_observable_matrix(site_gauge_observable_matrix, filepath, he
 def load_site_gauge_observable_matrix(filepath):
     return np.loadtxt(filepath)
 
-def x_t_plot(site_gauge_observable_matrix, filepath=""):
+def x_t_plot(site_gauge_observable_matrix, nxticks=5, filepath=""):
     if isinstance(site_gauge_observable_matrix[0], BasePrimitiveJob):
         site_gauge_observable_matrix = convert_jobs_to_site_gauge_matrix(site_gauge_observable_matrix)
 
@@ -35,11 +35,12 @@ def x_t_plot(site_gauge_observable_matrix, filepath=""):
     aspect = site_gauge_observable_matrix.shape[0]/site_gauge_observable_matrix.shape[1]/15
 
     plt.imshow(site_gauge_observable_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2)
-    # plt.title(r"Particle & Gauge occupation")
+    plt.title(r"Particle \& Gauge occupation")
     cbar = plt.colorbar()
     cbar.ax.set_ylabel(r"$(1 - \langle Z \rangle)/2$", labelpad=10)
     plt.xlabel(r"Sites")
     plt.ylabel("step")
+    plt.xticks(np.round(np.linspace(0, site_gauge_observable_matrix.shape[1]-1, nxticks)).astype(int), np.round(np.linspace(1, site_gauge_observable_matrix.shape[1], nxticks)).astype(int))
     plt.tight_layout()
 
     if filepath:
