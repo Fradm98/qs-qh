@@ -3,7 +3,7 @@ from qiskit_ibm_runtime import QiskitRuntimeService
 import json
 import numpy as np
 from ncon import ncon
-from fradm.token import _token
+from fradm.tokens import ibm_token
 
 def call_ibm_account(name: str, channel: str="ibm_quantum", token: str=None):
     try:

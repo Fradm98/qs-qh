@@ -17,6 +17,16 @@ class LocalInteractionPropagator(QuantumCircuit):
         self.cx(1, 2)
         self.cx(1, 0)
 
+class LowDepthLocalInteractionPropagatorFirst(QuantumCircuit):
+    def __init__(self):
+        super().__init__(2)
+        self.cx(1, 0)
+        
+class LowDepthLocalInteractionPropagatorSecond(QuantumCircuit):
+    def __init__(self):
+        super().__init__(2)
+        self.cx(0, 1)
+
 class TotalInteractionPropagator(QuantumCircuit):
     def __init__(self, chain_length):
         nqubits = 2*chain_length - 1
@@ -30,6 +40,34 @@ class TotalInteractionPropagator(QuantumCircuit):
             self.append(local_prop_instruction, list(qubits))
         for qubits in int_qb_inds_second.reshape((len(int_qb_inds_second)//3, 3)):
             self.append(local_prop_instruction, list(qubits))
+
+class LowDepthTotalInteractionPropagator(QuantumCircuit):
+    def __init__(self, chain_length):
+        nqubits = 2*chain_length - 1
+        qubit_list = np.arange(nqubits)
+        int_qb_inds_first = np.array(qubit_list[:-1])
+        int_qb_inds_second = np.array(qubit_list[1:])
+        t = Parameter("t")
+        super().__init__(nqubits)
+        local_prop1 = LowDepthLocalInteractionPropagatorFirst()
+        local_prop2 = LowDepthLocalInteractionPropagatorSecond()
+        local_prop_instruction1 = circuit_to_instruction(local_prop1)
+        local_prop_instruction2 = circuit_to_instruction(local_prop2)
+        for qubits in int_qb_inds_first.reshape((len(int_qb_inds_first)//2, 2)):
+            self.append(local_prop_instruction1, list(qubits))
+
+        for qubits in int_qb_inds_second.reshape((len(int_qb_inds_second)//2, 2)):
+            self.append(local_prop_instruction2, list(qubits))
+
+        for qubits in range(nqubits):
+            if qubits%2 == 1:
+                self.rx(2*t, qubits)
+
+        for qubits in int_qb_inds_second.reshape((len(int_qb_inds_second)//2, 2)):
+            self.append(local_prop_instruction2, list(qubits))
+
+        for qubits in int_qb_inds_first.reshape((len(int_qb_inds_first)//2, 2)):
+            self.append(local_prop_instruction1, list(qubits))
 
 class TotalSingleBodyPropagator(QuantumCircuit):
     def __init__(self, chain_length):
@@ -64,6 +102,16 @@ def SecondOrderTrotter(chain_length, J, h, lamb, t_total, layers, barriers=False
     if barriers: layer.barrier()
     return layer.repeat(layers).decompose()
 
+def LowDepthSecondOrderTrotter(chain_length, J, h, lamb, t_total, layers, barriers=False):
+    t_layer = t_total/layers
+    total_interaction_propagator = LowDepthTotalInteractionPropagator(chain_length).decompose()
+    total_interaction_propagator.assign_parameters([lamb*t_layer], inplace=True)
+    total_single_body_propagator = TotalSingleBodyPropagator(chain_length)
+    total_single_body_propagator.assign_parameters([h*t_layer/2, t_layer*J/2], inplace=True)
+    layer = total_single_body_propagator.compose(total_interaction_propagator).compose(total_single_body_propagator)
+    if barriers: layer.barrier()
+    return layer.repeat(layers).decompose()
+
 class particle_pair_initial_state(QuantumCircuit):
     def __init__(self, chain_length, left_particle_position, particle_pair_length=1):
         nqubits = 2*chain_length - 1
@@ -80,9 +128,12 @@ def particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_
         circs_to_return.append(this_complete_circuit)
     return circs_to_return
 
-def physical_particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_pair_left_position, particle_pair_length, final_time, layers, backend, optimization_level, layout=None, measure_every_layers=1, barriers=False):
+def physical_particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_pair_left_position, particle_pair_length, final_time, layers, backend, optimization_level, layout=None, measure_every_layers=1, depth="low", barriers=False):
     initial_state_preparation_circ = particle_pair_initial_state(chain_length, particle_pair_left_position, particle_pair_length)
-    logical_trotter_layer_circ = SecondOrderTrotter(chain_length, J, h, lamb, final_time/layers, 1, barriers)
+    if depth == "low":
+        logical_trotter_layer_circ = LowDepthSecondOrderTrotter(chain_length, J, h, lamb, final_time/layers, 1, barriers)
+    else:
+        logical_trotter_layer_circ = SecondOrderTrotter(chain_length, J, h, lamb, final_time/layers, 1, barriers)
     layout = layout[:logical_trotter_layer_circ.num_qubits] if layout is not None else None
     pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=layout)
     physical_state_preparation_circuit = pm.run(initial_state_preparation_circ)
