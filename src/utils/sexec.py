@@ -7,6 +7,16 @@ from qiskit_aer.primitives import EstimatorV2, SamplerV2
 from utils.circs import check_and_measure_active_qubits
 
 def execute_simulation_estimator_batch(simulator_options_dict, estimator_options_dict, circuits, observable_generating_funcs):
+    try:
+        observable_generating_funcs = list(observable_generating_funcs)
+    except TypeError:
+        observable_generating_funcs = [observable_generating_funcs]
+
+    try:
+        circuits = list(circuits)
+    except TypeError:
+        circuits = [circuits]
+
     job_objs = []
     
     estimator_options_dict["backend_options"] = simulator_options_dict
@@ -20,6 +30,11 @@ def execute_simulation_estimator_batch(simulator_options_dict, estimator_options
     return job_objs
 
 def execute_simulation_sampler_batch(simulator_options_dict, sampler_options_dict, circuits):
+    try:
+        circuits = list(circuits)
+    except TypeError:
+        circuits = [circuits]
+    
     job_objs = []
 
     options = {"backend_options": simulator_options_dict, "run_options": sampler_options_dict}
