@@ -1,3 +1,4 @@
+from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 import matplotlib.dates as pltdates
 import matplotlib.pyplot as plt
 from itertools import product
@@ -23,22 +24,25 @@ class benchmarkdb():
         with open(self.path, "w") as f:
             json.dump(self._data, f, indent=4)
 
-    def execute(self, nqubits_arr, depths_arr, backends_arr, physical_circuit_generating_func, observable_generating_funcs, shots=4096, test_circuit_name=None, observable_name=None):
+    def execute(self, nqubits_arr, depths_arr, backends_arr, logical_circuit_generating_func, observable_generating_funcs, shots=4096, test_circuit_name=None, observable_name=None):
         nqubits_arr = check_and_convert_to_unique_list(nqubits_arr)
         depths_arr = check_and_convert_to_unique_list(depths_arr)
-        backends_arr = check_and_convert_to_unique_list(backends_arr)
+        try:
+            backends_arr = list(backends_arr)
+        except TypeError:
+            backends_arr = [backends_arr]
         
         # Create the circuits to run
         circuits = []
         for nqubits in nqubits_arr:
             for depth in depths_arr:
-                circuits.append(physical_circuit_generating_func(nqubits, depth))
+                circuits.append(logical_circuit_generating_func(nqubits, depth))
 
         # Populate database with general information
         thisid = 0 if len(self._data) == 0 else self._data[-1]["id"] + 1
         data_to_add = {"id": thisid, "nqubits_arr": sorted(list(nqubits_arr)), "depth_arr": sorted(list(depths_arr))}
         data_to_add["backends"] = sorted([backend.name for backend in backends_arr])
-        data_to_add["test_circuit_name"] = test_circuit_name if test_circuit_name is not None else physical_circuit_generating_func.__name__
+        data_to_add["test_circuit_name"] = test_circuit_name if test_circuit_name is not None else logical_circuit_generating_func.__name__
         data_to_add["observable_func_name"] = observable_name if observable_name is not None else observable_generating_funcs.__name__
         data_to_add["jobs"] = {}
 
@@ -49,7 +53,9 @@ class benchmarkdb():
             "resilience_level": 0
         }
         for backend in backends_arr:
-            this_jobs_arr = hexec.execute_estimator_batch(backend, estimator_opt_dict, circuits, observable_generating_funcs)
+            pm = generate_preset_pass_manager(optimization_level=0, backend=backend)
+            physical_circuits = pm.run(circuits)
+            this_jobs_arr = hexec.execute_estimator_batch(backend, estimator_opt_dict, physical_circuits, observable_generating_funcs)
             this_backend_list = [{
                 "job_id": job.job_id(),
                 "nqubits": circuit.num_qubits,
@@ -80,6 +86,10 @@ class benchmarkdb():
         self.save()
 
     def _backends_objs_to_names(self, backends_arr):
+        try:
+            backends_arr = list(backends_arr)
+        except TypeError:
+            backends_arr = [backends_arr]
         backends_name_arr = []
         for backend in backends_arr:
             if type(backend) != str:
@@ -94,7 +104,11 @@ class benchmarkdb():
     def _search_index_by_params(self, nqubits_arr=None, depths_arr=None, backends_arr=None, test_circuit_name_func=False, observable_name_func=None, date_range=None, limit=None):        
         nqubits_arr = check_and_convert_to_unique_list(nqubits_arr)
         depths_arr = check_and_convert_to_unique_list(depths_arr)
-        backends_arr = check_and_convert_to_unique_list(backends_arr)
+        try:
+            backends_arr = list(backends_arr)
+        except TypeError:
+            backends_arr = [backends_arr]
+
         search_functions = []
         if nqubits_arr is not None:
             search_functions.append(lambda test: test["nqubits_arr"] == sorted(nqubits_arr))
@@ -145,12 +159,8 @@ class benchmarkdb():
     def search_by_id(self, id):
         ind = self._search_batch_index_by_id(id)
         return self._data[ind]
-    
-    def _search_all_evs_for_different_dates(self, nqubits, depth, backend, test_circuit_name_func, observable_name_func, date_range=None, limit=None):
-        pass
 
-
-    def plot_mean_error_by_date(self, nqubits_arr, depths_arr, backends_arr, physical_circuit_generating_func, observable_generating_func, date_range=None, shots=4096, simulator_max_bond_dimension=256, simulation_results_folder_path=None):
+    def plot_mean_error_by_date(self, nqubits_arr, depths_arr, backends_arr, logical_circuit_generating_func, observable_generating_func, date_range=None, shots=4096, simulator_max_bond_dimension=256, simulation_results_folder_path=None):
         self.update_status()
 
         # Create the circuits to run
@@ -159,7 +169,7 @@ class benchmarkdb():
         circuits = []
         for nqubits in nqubits_arr:
             for depth in depths_arr:
-                circuits.append(physical_circuit_generating_func(nqubits, depth))
+                circuits.append(logical_circuit_generating_func(nqubits, depth))
 
         # Simulate the circuits
         estimator_options = {"default_precision": 1/np.sqrt(shots)}
@@ -168,7 +178,7 @@ class benchmarkdb():
             "matrix_product_state_max_bond_dimension": simulator_max_bond_dimension,
             "matrix_product_state_truncation_threshold": 1e-10
         }
-        physical_circuit_name = physical_circuit_generating_func.__name__
+        physical_circuit_name = logical_circuit_generating_func.__name__
         observable_name = observable_generating_func.__name__
         results_filename = f"benchmark_simresults_nqubits_{min(nqubits)}-{max(nqubits)}_depths_{min(depths_arr)}-{max(depths_arr)}_testcirc_{physical_circuit_name}_obsname_{observable_name}_bd_{simulator_max_bond_dimension}.txt"
         results_filepath = os.path.join("" if simulation_results_folder_path is None else simulation_results_folder_path, results_filename)
@@ -180,7 +190,7 @@ class benchmarkdb():
         
         # Get observables for each number of qubits and depths
         backends_name_arr = self._backends_objs_to_names(backends_arr)
-        found_benchmarks = self.search_by_params(nqubits_arr, depths_arr, backends_arr, physical_circuit_generating_func, observable_generating_func, date_range)
+        found_benchmarks = self.search_by_params(nqubits_arr, depths_arr, backends_arr, logical_circuit_generating_func, observable_generating_func, date_range)
         measurement_dates = {x:{} for x in product(nqubits_arr, depths_arr)}
         measured_evs = {x:{} for x in product(nqubits_arr, depths_arr)}
         for nqubits in nqubits_arr:
