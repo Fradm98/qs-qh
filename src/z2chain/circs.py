@@ -113,8 +113,9 @@ def physical_particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, 
     logical_trotter_layer_circ = SecondOrderTrotter(chain_length, J, h, lamb, final_time/layers, 1, x_basis=x_basis, barriers=barriers)
     layout = layout[:logical_trotter_layer_circ.num_qubits] if layout is not None else None
     pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=layout)
-    physical_state_preparation_circuit = pm.run(initial_state_preparation_circ)
     physical_trotter_layer_circ = pm.run(logical_trotter_layer_circ)
+    pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=physical_trotter_layer_circ.layout.final_index_layout())
+    physical_state_preparation_circuit = pm.run(initial_state_preparation_circ)
     circs_to_return = [physical_state_preparation_circuit]
     niterations = layers // measure_every_layers
     for i in range(1, niterations + 1):
