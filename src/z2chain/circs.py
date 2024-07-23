@@ -126,7 +126,8 @@ def physical_particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, 
                 layout_dict = {layout[i]:this_circuit.qubits[i] for i in range(this_circuit.num_qubits)}
                 layout_pm = PassManager([SetLayout(layout=Layout(layout_dict)), FullAncillaAllocation(coupling_map=backend.target), ApplyLayout()])
             else:
-                layout_pm = PassManager([DenseLayout(target=backend.target), FullAncillaAllocation(coupling_map=backend.target), ApplyLayout()])
+                layout_dict = {physical_trotter_layer_circ.layout.final_index_layout()[i]:this_circuit.qubits[i] for i in range(this_circuit.num_qubits)}
+                layout_pm = PassManager([SetLayout(layout=Layout(layout_dict)), FullAncillaAllocation(coupling_map=backend.target), ApplyLayout()])
             sqcancel_pm = PassManager([Optimize1qGates(target=backend.target)])
             sqopt_pm = StagedPassManager(stages=["optimization", "layout"], layout=layout_pm, optimization=sqcancel_pm)
         this_circuit = sqopt_pm.run(this_circuit)
