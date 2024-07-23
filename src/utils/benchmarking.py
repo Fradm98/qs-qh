@@ -79,8 +79,8 @@ class benchmarkdb():
                         one_to_be_completed = True
                         job = service.job(job_dict["job_id"])
                         if job.in_final_state():
-                            job_dict["execution_time"] = job.metric()["timestamps"]["finished"]
-                            job_dicts["ev"] = float(job.results()[0].data.evs[0])
+                            job_dict["execution_time"] = job.metrics()["timestamps"]["finished"]
+                            job_dict["ev"] = float(job.result()[0].data.evs[0])
             if (not one_to_be_completed) and (not check_all):
                 break
         self.save()
@@ -211,7 +211,7 @@ class benchmarkdb():
         for i, nqubits in enumerate(nqubits_arr):
             for j, depth in enumerate(depths_arr):
                 for backend_name in backends_name_arr:
-                    errors = np.abs(np.array(measured_evs[(nqubits, depth)][backend_name]) - simulated_evs[i+j])
+                    errors = np.abs(np.array(measured_evs[(nqubits, depth)][backend_name]) - simulated_evs[i+j])/np.abs(simulated_evs[i+j])
                     date_locator = pltdates.AutoDateLocator()
                     date_formatter = pltdates.ConciseDateFormatter(date_locator, formats=['%Y', '%d/%b', '%d/%b', '%H:%M', '%H:%M', '%S.%f'], offset_formats=['', '%Y', '%b/%Y', '%d-%b-%Y', '%d/%b/%Y', '%d/%b/%Y %H:%M'])
                     axs[i+j].plot(measurement_dates[(nqubits, depth)][backend_name], errors, "o-", linewidth=2, markersize=8, label=backend_name)
