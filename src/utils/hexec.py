@@ -116,6 +116,9 @@ def map_obs_to_circs(transpiled_circuits, observable_generating_funcs, return_la
     except TypeError:
         observable_generating_funcs = [observable_generating_funcs]
     
+    if type(transpiled_circuits) != list:
+        transpiled_circuits = [transpiled_circuits]
+
     mapped_observables = []
     if return_layouts: layouts = []
     for transpiled_circuit in transpiled_circuits:
@@ -136,6 +139,9 @@ def map_obs_to_circs(transpiled_circuits, observable_generating_funcs, return_la
         return mapped_observables
 
 def execute_estimator_batch(backend, estimator_opt_dict, transpiled_circuits, observable_generating_funcs, job_db=None, observable_name=None):    
+    if type(transpiled_circuits) != list:
+        transpiled_circuits = [transpiled_circuits]
+
     mapped_observables =  map_obs_to_circs(transpiled_circuits, observable_generating_funcs)
     job_objs = []
 
