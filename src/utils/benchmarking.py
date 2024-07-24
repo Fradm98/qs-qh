@@ -24,14 +24,17 @@ class benchmarkdb():
         with open(self.path, "w") as f:
             json.dump(self._data, f, indent=4)
 
-    def execute(self, nqubits_arr, depths_arr, backends_arr, logical_circuit_generating_func, observable_generating_funcs, shots=4096, test_circuit_name=None, observable_name=None):
+    def execute(self, nqubits_arr, depths_arr, devices_arr, service, logical_circuit_generating_func, observable_generating_funcs, shots=4096, test_circuit_name=None, observable_name=None):
         nqubits_arr = check_and_convert_to_unique_list(nqubits_arr)
         depths_arr = check_and_convert_to_unique_list(depths_arr)
+        
+        # Call the backends from the device list
+        backends_arr = [service.backend(device) for device in devices_arr]
         try:
             backends_arr = list(backends_arr)
         except TypeError:
             backends_arr = [backends_arr]
-        
+
         # Create the circuits to run
         circuits = []
         for nqubits in nqubits_arr:
