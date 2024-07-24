@@ -6,6 +6,23 @@ from qiskit.converters import circuit_to_instruction
 from utils.circs import remove_idle_qwires
 import numpy as np
 
+class LocalInteractionPropagator(QuantumCircuit):
+    def __init__(self, x_basis=False):
+        super().__init__(3)
+        t = Parameter("t")
+        if x_basis:
+            self.cx(0, 1)
+            self.cx(2, 1)
+            self.rx(t, 1)
+            self.cx(2, 1)
+            self.cx(0, 1)
+        else:
+            self.cx(1, 0)
+            self.cx(1, 2)
+            self.rx(t, 1)
+            self.cx(1, 2)
+            self.cx(1, 0)
+
 class LocalInteractionPropagatorFirst(QuantumCircuit):
     def __init__(self, x_basis=False):
         super().__init__(2)
@@ -64,6 +81,21 @@ class TotalInteractionPropagator(QuantumCircuit):
         for qubits in int_qb_inds_first.reshape((len(int_qb_inds_first)//2, 2)):
             self.append(local_prop_instruction1, list(qubits))
 
+class TotalInteractionPropagatorOld(QuantumCircuit):
+    def __init__(self, chain_length, x_basis=False):
+        nqubits = 2*chain_length - 1
+        qubit_list = np.arange(nqubits)
+        int_qb_inds_first = qubit_list[np.less(qubit_list % 4, 3)][:-1 if chain_length % 2 else None]
+        int_qb_inds_second = qubit_list[2::][np.less((qubit_list[2::] - 2) % 4, 3)][:None if chain_length % 2 else -1]
+        super().__init__(nqubits)
+        local_prop = LocalInteractionPropagator(x_basis)
+        local_prop_instruction = circuit_to_instruction(local_prop)
+        for qubits in int_qb_inds_first.reshape((len(int_qb_inds_first)//3, 3)):
+            self.append(local_prop_instruction, list(qubits))
+
+        for qubits in int_qb_inds_second.reshape((len(int_qb_inds_second)//3, 3)):
+            self.append(local_prop_instruction, list(qubits))
+
 class particle_pair_initial_state(QuantumCircuit):
     def __init__(self, chain_length, left_particle_position, particle_pair_length=1, x_basis=False):
         nqubits = 2*chain_length - 1
@@ -98,6 +130,16 @@ def SecondOrderTrotter(chain_length, J, h, lamb, t_total, layers, x_basis=False,
     if barriers: layer.barrier()
     return layer.repeat(layers).decompose()
 
+def SecondOrderTrotterOld(chain_length, J, h, lamb, t_total, layers, x_basis=False, barriers=False):
+    t_layer = t_total/layers
+    total_interaction_propagator = TotalInteractionPropagatorOld(chain_length, x_basis).decompose()
+    total_interaction_propagator.assign_parameters([lamb*t_layer], inplace=True)
+    total_single_body_propagator = TotalSingleBodyPropagator(chain_length, x_basis)
+    total_single_body_propagator.assign_parameters([h*t_layer/2, t_layer*J/2], inplace=True)
+    layer = total_single_body_propagator.compose(total_interaction_propagator).compose(total_single_body_propagator)
+    if barriers: layer.barrier()
+    return layer.repeat(layers).decompose()
+
 def particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_pair_left_position, particle_pair_length, final_time, layers, measure_every_layers=1, x_basis=False, barriers=False):
     initial_state_preparation = particle_pair_initial_state(chain_length, particle_pair_left_position, particle_pair_length, x_basis=x_basis)
     circs_to_return = [initial_state_preparation]
@@ -111,6 +153,31 @@ def particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_
 def physical_particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_pair_left_position, particle_pair_length, final_time, layers, backend, optimization_level, layout=None, measure_every_layers=1, x_basis=False, barriers=False):
     initial_state_preparation_circ = particle_pair_initial_state(chain_length, particle_pair_left_position, particle_pair_length, x_basis=x_basis)
     logical_trotter_layer_circ = SecondOrderTrotter(chain_length, J, h, lamb, final_time/layers, 1, x_basis=x_basis, barriers=barriers)
+    layout = layout[:logical_trotter_layer_circ.num_qubits] if layout is not None else None
+    pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=layout)
+    physical_trotter_layer_circ = pm.run(logical_trotter_layer_circ)
+    pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=physical_trotter_layer_circ.layout.final_index_layout())
+    physical_state_preparation_circuit = pm.run(initial_state_preparation_circ)
+    circs_to_return = [physical_state_preparation_circuit]
+    niterations = layers // measure_every_layers
+    for i in range(1, niterations + 1):
+        this_circuit = physical_state_preparation_circuit.compose(physical_trotter_layer_circ.repeat(i*measure_every_layers).decompose())
+        this_circuit = remove_idle_qwires(this_circuit)
+        if i == 1:
+            if layout is not None:
+                layout_dict = {layout[i]:this_circuit.qubits[i] for i in range(this_circuit.num_qubits)}
+            else:
+                layout_dict = {physical_trotter_layer_circ.layout.final_index_layout()[i]:this_circuit.qubits[i] for i in range(this_circuit.num_qubits)}
+            layout_pm = PassManager([SetLayout(layout=Layout(layout_dict)), FullAncillaAllocation(coupling_map=backend.target), ApplyLayout()])
+            sqcancel_pm = PassManager([Optimize1qGates(target=backend.target)])
+            sqopt_pm = StagedPassManager(stages=["optimization", "layout"], layout=layout_pm, optimization=sqcancel_pm)
+        this_circuit = sqopt_pm.run(this_circuit)
+        circs_to_return.append(this_circuit)
+    return circs_to_return
+
+def physical_particle_pair_quench_simulation_circuits_old(chain_length, J, h, lamb, particle_pair_left_position, particle_pair_length, final_time, layers, backend, optimization_level, layout=None, measure_every_layers=1, x_basis=False, barriers=False):
+    initial_state_preparation_circ = particle_pair_initial_state(chain_length, particle_pair_left_position, particle_pair_length, x_basis=x_basis)
+    logical_trotter_layer_circ = SecondOrderTrotterOld(chain_length, J, h, lamb, final_time/layers, 1, x_basis=x_basis, barriers=barriers)
     layout = layout[:logical_trotter_layer_circ.num_qubits] if layout is not None else None
     pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=layout)
     physical_trotter_layer_circ = pm.run(logical_trotter_layer_circ)
