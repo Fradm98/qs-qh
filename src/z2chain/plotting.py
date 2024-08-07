@@ -1,17 +1,33 @@
 from qiskit.primitives.base.base_primitive_job import BasePrimitiveJob
+from qiskit_ibm_runtime.runtime_job import RuntimeJob
 from qiskit_ibm_runtime.runtime_job_v2 import RuntimeJobFailureError
 import matplotlib.pyplot as plt
 import numpy as np
 
 def convert_jobs_to_site_gauge_matrix(jobs_arr):
-    site_gauge_observable_matrix = np.zeros((len(jobs_arr), len(first_job_result := jobs_arr[0].result()[0].data.evs)))
-    site_gauge_observable_matrix[0] = (1 - first_job_result[::-1])/2
-    for i, job in enumerate(jobs_arr[1::], start=1):
+    printed_warning_header = False
+    first_success_index = 0
+    while first_success_index < len(jobs_arr):
+        try:
+            site_gauge_observable_matrix = np.full((len(jobs_arr), len(first_success_result := jobs_arr[first_success_index].result()[0].data.evs)), np.nan)
+            break
+        except RuntimeJobFailureError:
+            if not printed_warning_header: 
+                print("WARNING: Some jobs failed, the plot will be incomplete\nFAILED JOBS\nIndex | ID")
+                printed_warning_header = True
+            print(f"{str(first_success_index).ljust(6)}| {jobs_arr[first_success_index].job_id()}")
+            first_success_index += 1
+            continue
+    site_gauge_observable_matrix[first_success_index] = (1 - first_success_result[::-1])/2
+    for i, job in enumerate(jobs_arr[first_success_index::], start=first_success_index):
         try:
             site_gauge_observable_matrix[i] = (1 - job.result()[0].data.evs[::-1])/2
-        except RuntimeJobFailureError as e:
-            print(f"WARNING: Jobs with i > {i} failed, the plot will be shorter than expected")
-            break
+        except RuntimeJobFailureError:
+            if not printed_warning_header: 
+                print("WARNING: Some jobs failed, the plot will be incomplete\nFAILED JOBS\nIndex | ID")
+                printed_warning_header = True
+            print(f"{str(i).ljust(6)}| {job.job_id()}")
+            continue
     return site_gauge_observable_matrix[:i]
 
 def save_site_gauge_observable_matrix(site_gauge_observable_matrix, filepath, header=""):
@@ -24,7 +40,7 @@ def load_site_gauge_observable_matrix(filepath):
     return np.loadtxt(filepath)
 
 def x_t_plot(site_gauge_observable_matrix, nxticks=5, filepath=""):
-    if isinstance(site_gauge_observable_matrix[0], BasePrimitiveJob):
+    if isinstance(site_gauge_observable_matrix[0], BasePrimitiveJob) or isinstance(site_gauge_observable_matrix[0], RuntimeJob):
         site_gauge_observable_matrix = convert_jobs_to_site_gauge_matrix(site_gauge_observable_matrix)
 
     plt.rc("text", usetex=True)
@@ -47,9 +63,9 @@ def x_t_plot(site_gauge_observable_matrix, nxticks=5, filepath=""):
         plt.savefig(filepath, dpi=300, facecolor="none")
 
 def discrepancies_plot(exact_site_gauge_observable_matrix, approximated_site_gauge_observable_matrix, filepath=""):
-    if isinstance(exact_site_gauge_observable_matrix[0], BasePrimitiveJob):
+    if isinstance(exact_site_gauge_observable_matrix[0], BasePrimitiveJob) or isinstance(exact_site_gauge_observable_matrix[0], RuntimeJob):
         exact_site_gauge_observable_matrix = convert_jobs_to_site_gauge_matrix(exact_site_gauge_observable_matrix)
-    if isinstance(approximated_site_gauge_observable_matrix[0], BasePrimitiveJob):
+    if isinstance(approximated_site_gauge_observable_matrix[0], BasePrimitiveJob) or isinstance(approximated_site_gauge_observable_matrix[0], RuntimeJob):
         approximated_site_gauge_observable_matrix = convert_jobs_to_site_gauge_matrix(approximated_site_gauge_observable_matrix)
 
     max_len = np.min([exact_site_gauge_observable_matrix.shape[0], approximated_site_gauge_observable_matrix.shape[0]])
