@@ -6,7 +6,11 @@ from datetime import datetime
 import utils.hexec as hexec
 import utils.sexec as sexec
 import numpy as np
+import subprocess
+import plistlib
+import getpass
 import json
+import sys
 import os
 
 class benchmarkdb():
@@ -231,3 +235,33 @@ def check_and_convert_to_unique_list(arg):
     except TypeError:
         arg = [arg]
     return arg
+
+def generate_and_execute_launchctl_file_mac(python_script, seconds_start_interval, stdout_path=None, stderr_path=None, working_directory=None, folder="/Library/LaunchDaemons"):
+    data = dict(
+    Label="com.local.qiskit.benchmark",
+    ProgramArguments=[sys.executable, f"\"{os.path.abspath(python_script)}\""],
+    StandardOutPath=f"\"{os.path.abspath(stdout_path if stdout_path is not None else "benchmarks.log")}\"",
+    StandardErrorPath=f"\"{os.path.abspath(stderr_path if stdout_path is not None else "benchmarks.err")}\"",
+    WorkingDirectory=f"\"{os.path.abspath(working_directory) if working_directory is not None else os.getcwd()}\"",
+    StartInterval=seconds_start_interval)
+
+    password = getpass.getpass(prompt="Introduce superuser password")
+
+    try:
+        with open(finalpath := os.path.join(folder, "com.local.quantum.benchmark.plist"), "wb") as f:
+            plistlib.dump(data, f)
+    except PermissionError as e:
+        with open(ogpath := os.path.abspath("com.local.quantum.benchmark.plist"), "wb") as f:
+            plistlib.dump(data, f)
+        p = subprocess.Popen(["sudo", "-S", "mv", ogpath, finalpath], stderr=subprocess.PIPE, stdout=subprocess.PIPE, stdin=subprocess.PIPE)
+        try:
+            out, err = p.communicate(input=f"{password}\n".encode(), timeout=5)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            raise e
+    
+    p = subprocess.Popen(["sudo", "-S", "launchctl", "load", finalpath])
+    try:
+        out, err = p.communicate(input=f"{password}\n".encode(), timeout=5)
+    except subprocess.TimeoutExpired:
+        p.kill()
