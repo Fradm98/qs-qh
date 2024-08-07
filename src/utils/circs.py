@@ -26,3 +26,8 @@ def check_and_measure_active_qubits(circuit):
     if not circuit.cregs:
         circuit.measure_active()
     return circuit
+
+def compute_uncompute(original_circuit, barrier=False):
+    to_return = original_circuit
+    if barrier: to_return.barrier()
+    return to_return.compose(original_circuit.inverse())
