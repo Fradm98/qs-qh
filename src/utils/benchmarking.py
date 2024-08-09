@@ -1,4 +1,7 @@
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
+from qiskit.transpiler.passmanager import PassManager
+from qiskit.transpiler.passes import RemoveBarriers
+from qiskit_aer import AerSimulator
 import matplotlib.dates as pltdates
 import matplotlib.pyplot as plt
 from itertools import product
@@ -13,7 +16,7 @@ import json
 import sys
 import os
 
-class benchmarkdb():
+class BenchmarkDB():
     def __init__(self, path):
         self.path = path
         if os.path.exists(path):
@@ -28,7 +31,7 @@ class benchmarkdb():
         with open(self.path, "w") as f:
             json.dump(self._data, f, indent=4)
 
-    def execute(self, nqubits_arr, depths_arr, devices_arr, service, logical_circuit_generating_func, observable_generating_funcs, shots=4096, test_circuit_name=None, observable_name=None):
+    def execute(self, nqubits_arr, depths_arr, devices_arr, service, logical_circuit_generating_func, observable_generating_func, shots=4096, test_circuit_name=None, observable_name=None):
         nqubits_arr = check_and_convert_to_unique_list(nqubits_arr)
         depths_arr = check_and_convert_to_unique_list(depths_arr)
         
@@ -50,7 +53,7 @@ class benchmarkdb():
         data_to_add = {"id": thisid, "nqubits_arr": sorted(list(nqubits_arr)), "depth_arr": sorted(list(depths_arr))}
         data_to_add["backends"] = sorted([backend.name for backend in backends_arr])
         data_to_add["test_circuit_name"] = test_circuit_name if test_circuit_name is not None else logical_circuit_generating_func.__name__
-        data_to_add["observable_func_name"] = observable_name if observable_name is not None else observable_generating_funcs.__name__
+        data_to_add["observable_func_name"] = observable_name if observable_name is not None else observable_generating_func.__name__
         data_to_add["jobs"] = {}
 
         # Run the jobs and populate job-specific available information
@@ -62,7 +65,7 @@ class benchmarkdb():
         for backend in backends_arr:
             pm = generate_preset_pass_manager(optimization_level=0, backend=backend)
             physical_circuits = pm.run(circuits)
-            this_jobs_arr = hexec.execute_estimator_batch(backend, estimator_opt_dict, physical_circuits, observable_generating_funcs)
+            this_jobs_arr = hexec.execute_estimator_batch(backend, estimator_opt_dict, physical_circuits, observable_generating_func)
             this_backend_list = [{
                 "job_id": job.job_id(),
                 "nqubits": circuit.num_qubits,
@@ -170,13 +173,18 @@ class benchmarkdb():
     def plot_mean_error_by_date(self, nqubits_arr, depths_arr, backends_arr, logical_circuit_generating_func, observable_generating_func, date_range=None, shots=4096, simulator_max_bond_dimension=256, simulation_results_folder_path=None):
         self.update_status()
 
-        # Create the circuits to run
+        # Create and optimize the circuits to run (For performance reasons, the result will be the same for the simulator)
         nqubits_arr = set(nqubits_arr)
         depths_arr = set(depths_arr)
+        barrier_pm = PassManager([RemoveBarriers()])
+        pm = generate_preset_pass_manager(backend=AerSimulator(), optimization_level=2)
         circuits = []
+        simulator_optimized_circuits = []
         for nqubits in nqubits_arr:
             for depth in depths_arr:
-                circuits.append(logical_circuit_generating_func(nqubits, depth))
+                circuits.append(this_circuit := logical_circuit_generating_func(nqubits, depth))
+                this_opt_circuit = pm.run(barrier_pm.run(this_circuit))
+                simulator_optimized_circuits.append(this_opt_circuit)
 
         # Simulate the circuits
         estimator_options = {"default_precision": 1/np.sqrt(shots)}
@@ -190,7 +198,7 @@ class benchmarkdb():
         results_filename = f"benchmark_simresults_nqubits_{min(nqubits)}-{max(nqubits)}_depths_{min(depths_arr)}-{max(depths_arr)}_testcirc_{physical_circuit_name}_obsname_{observable_name}_bd_{simulator_max_bond_dimension}.txt"
         results_filepath = os.path.join("" if simulation_results_folder_path is None else simulation_results_folder_path, results_filename)
         if not os.path.isfile(results_filepath):
-            simulated_jobs = sexec.execute_simulation_estimator_batch(simulator_options, estimator_options, circuits, observable_generating_func)
+            simulated_jobs = sexec.execute_simulation_estimator_batch(simulator_options, estimator_options, simulator_optimized_circuits, observable_generating_func)
             simulated_evs = [job.result()[0].data.evs for job in simulated_jobs]
             if simulation_results_folder_path is not None:
                 np.savetxt(results_filepath, simulated_evs)
@@ -236,32 +244,77 @@ def check_and_convert_to_unique_list(arg):
         arg = [arg]
     return arg
 
-def generate_and_execute_launchctl_file_mac(python_script, seconds_start_interval, stdout_path=None, stderr_path=None, working_directory=None, folder="/Library/LaunchDaemons"):
+def is_benchmark_running_mac(password=None):
+    if password is None: password = getpass.getpass(prompt="Introduce superuser password")
+    sp = subprocess.run(["sudo", "-S", "launchctl", "list"], input=f"{password}\n", text=True, capture_output=True)
+    return "com.local.quantum.benchmark" in sp.stdout
+
+def stop_benchmark_mac(password=None):
+    if password is None: password = getpass.getpass(prompt="Introduce superuser password")
+    subprocess.run(["sudo", "-S", "launchctl", "bootout", "system/com.local.quantum.benchmark"], input=f"{password}\n", text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+def generate_and_execute_launchctl_file_mac(python_script, *args, seconds_start_interval=None, start_relativedeltas=None, stdout_path=None, stderr_path=None, working_directory=None, folder="/Library/LaunchDaemons", password=None):
+    if password is None: password = getpass.getpass(prompt="Introduce superuser password")
+    if is_benchmark_running_mac(password):
+        stop_benchmark_mac(password)
+    
     data = dict(
-    Label="com.local.qiskit.benchmark",
-    ProgramArguments=[sys.executable, f"\"{os.path.abspath(python_script)}\""],
-    StandardOutPath=f"\"{os.path.abspath(stdout_path if stdout_path is not None else "benchmarks.log")}\"",
-    StandardErrorPath=f"\"{os.path.abspath(stderr_path if stdout_path is not None else "benchmarks.err")}\"",
-    WorkingDirectory=f"\"{os.path.abspath(working_directory) if working_directory is not None else os.getcwd()}\"",
-    StartInterval=seconds_start_interval)
+    Label="com.local.quantum.benchmark",
+    ProgramArguments=[sys.executable, os.path.abspath(python_script)] + list(args),
+    StandardOutPath=f"{os.path.abspath(stdout_path if stdout_path is not None else "benchmarks.log")}",
+    StandardErrorPath=f"{os.path.abspath(stderr_path if stdout_path is not None else "benchmarks.err")}",
+    WorkingDirectory=f"{os.path.abspath(working_directory) if working_directory is not None else os.getcwd()}",
+    KeepAlive={"PathState":{os.path.abspath(python_script):True}})
 
-    password = getpass.getpass(prompt="Introduce superuser password")
+    if seconds_start_interval is not None: data["StartInterval"] = seconds_start_interval
 
+    if start_relativedeltas is not None:
+        try:
+            start_relativedeltas = list(start_relativedeltas)
+        except TypeError:
+            start_relativedeltas = [start_relativedeltas]
+        start_calendar_dicts = []
+        for start_relativedelta in start_relativedeltas:
+            this_start_calendar = {}
+            if (min := start_relativedelta.minute) is not None: this_start_calendar["Minute"] = min
+            if (hour := start_relativedelta.hour) is not None: this_start_calendar["Hour"] = hour
+            if (day := start_relativedelta.day) is not None:
+                if 1 <= day <= 31: 
+                    this_start_calendar["Day"] = day
+                else:
+                    raise ValueError("Days in start_relativedelta must be in range [1, 31]")
+            if (weekday := start_relativedelta.weekday) is not None: this_start_calendar["weekday"] = weekday.weekday + 1
+            if (month := start_relativedelta.month) is not None:
+                if 1 <= month <= 12:
+                    this_start_calendar["Month"] = month
+                else:
+                    raise ValueError("Months in start_relativedelta must be in range [1, 12]")
+            start_calendar_dicts.append(this_start_calendar)
+        data["StartCalendarInterval"] = start_calendar_dicts
     try:
         with open(finalpath := os.path.join(folder, "com.local.quantum.benchmark.plist"), "wb") as f:
             plistlib.dump(data, f)
     except PermissionError as e:
         with open(ogpath := os.path.abspath("com.local.quantum.benchmark.plist"), "wb") as f:
             plistlib.dump(data, f)
-        p = subprocess.Popen(["sudo", "-S", "mv", ogpath, finalpath], stderr=subprocess.PIPE, stdout=subprocess.PIPE, stdin=subprocess.PIPE)
-        try:
-            out, err = p.communicate(input=f"{password}\n".encode(), timeout=5)
-        except subprocess.TimeoutExpired:
-            p.kill()
-            raise e
-    
-    p = subprocess.Popen(["sudo", "-S", "launchctl", "load", finalpath])
-    try:
-        out, err = p.communicate(input=f"{password}\n".encode(), timeout=5)
-    except subprocess.TimeoutExpired:
-        p.kill()
+        subprocess.run(["sudo", "-S", "mv", ogpath, finalpath], input=f"{password}\n", text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["sudo", "-S", "chown", "root:wheel", finalpath], input=f"{password}\n", text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(["sudo", "-S", "launchctl", "load", finalpath], input=f"{password}\n", text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+def check_benchmark_status_mac(stdout_path=None, password=None):
+    if password is None: password = getpass.getpass(prompt="Introduce superuser password")
+    if is_benchmark_running_mac(password):
+        with open("/Library/LaunchDaemons/com.local.quantum.benchmark.plist", "rb") as f:
+            data = plistlib.load(f)
+        settings_str = json.dumps(data, indent=4)
+        print("The benchmark IS running")
+        print("SETTINGS:")
+        print(settings_str)
+        if stdout_path is not None:
+            print("LOGS:")
+            with open(stdout_path, "r") as f:
+                lines = f.readlines()
+                last_ten_lines = lines[len(lines)-11::-1]
+                print("\n".join(last_ten_lines))
+    else:
+        print("The benchmark is NOT running")
