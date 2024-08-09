@@ -1,6 +1,6 @@
 from qiskit.primitives.base.base_primitive_job import BasePrimitiveJob
-from qiskit_ibm_runtime.runtime_job import RuntimeJob
 from qiskit_ibm_runtime.runtime_job_v2 import RuntimeJobFailureError
+from qiskit_ibm_runtime.runtime_job import RuntimeJob
 import matplotlib.pyplot as plt
 import numpy as np
 
