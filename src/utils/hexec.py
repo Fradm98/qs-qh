@@ -10,7 +10,7 @@ import numpy as np
 import json
 import os
 
-class execdb:
+class ExecDB:
     """Database for saving jobs"""
     def __init__(self, path):
         self.path = path
