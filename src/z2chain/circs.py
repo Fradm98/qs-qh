@@ -1,4 +1,4 @@
-from qiskit.transpiler.passes import Optimize1qGates, SetLayout, ApplyLayout, DenseLayout, FullAncillaAllocation
+from qiskit.transpiler.passes import Optimize1qGates, SetLayout, ApplyLayout, FullAncillaAllocation, Optimize1qGatesDecomposition, Optimize1qGatesSimpleCommutation
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit.transpiler import PassManager, StagedPassManager, Layout
 from qiskit.circuit import QuantumCircuit, Parameter
@@ -101,7 +101,7 @@ class particle_pair_initial_state(QuantumCircuit):
         nqubits = 2*chain_length - 1
         super().__init__(nqubits)
         if x_basis:
-            self.x(range(nqubits))
+            self.h(range(nqubits))
             self.z(range(2*left_particle_position, 2*(left_particle_position + particle_pair_length) + 1))
         else:
             self.x(range(2*left_particle_position, 2*(left_particle_position + particle_pair_length) + 1))
@@ -144,9 +144,12 @@ def particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_
     initial_state_preparation = particle_pair_initial_state(chain_length, particle_pair_left_position, particle_pair_length, x_basis=x_basis)
     circs_to_return = [initial_state_preparation]
     ncircuits_to_iterate = layers // measure_every_layers
+    sqcancel_pm = PassManager([Optimize1qGatesDecomposition()])
+    sqopt_pm = StagedPassManager(stages=["optimization"], optimization=sqcancel_pm)
     for i in range(1, ncircuits_to_iterate + 1):
         this_trotter_circuit = SecondOrderTrotter(chain_length, J, h, lamb, final_time*i/ncircuits_to_iterate, i*measure_every_layers, x_basis=x_basis, barriers=barriers)
         this_complete_circuit = initial_state_preparation.compose(this_trotter_circuit)
+        this_complete_circuit = sqopt_pm.run(this_complete_circuit)
         circs_to_return.append(this_complete_circuit)
     return circs_to_return
 
@@ -169,7 +172,7 @@ def physical_particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, 
             else:
                 layout_dict = {physical_trotter_layer_circ.layout.final_index_layout()[i]:this_circuit.qubits[i] for i in range(this_circuit.num_qubits)}
             layout_pm = PassManager([SetLayout(layout=Layout(layout_dict)), FullAncillaAllocation(coupling_map=backend.target), ApplyLayout()])
-            sqcancel_pm = PassManager([Optimize1qGates(target=backend.target)])
+            sqcancel_pm = PassManager([Optimize1qGates(target=backend.target), Optimize1qGatesDecomposition(target=backend.target), Optimize1qGatesSimpleCommutation(target=backend.target)])
             sqopt_pm = StagedPassManager(stages=["optimization", "layout"], layout=layout_pm, optimization=sqcancel_pm)
         this_circuit = sqopt_pm.run(this_circuit)
         circs_to_return.append(this_circuit)
@@ -194,7 +197,7 @@ def physical_particle_pair_quench_simulation_circuits_old(chain_length, J, h, la
             else:
                 layout_dict = {physical_trotter_layer_circ.layout.final_index_layout()[i]:this_circuit.qubits[i] for i in range(this_circuit.num_qubits)}
             layout_pm = PassManager([SetLayout(layout=Layout(layout_dict)), FullAncillaAllocation(coupling_map=backend.target), ApplyLayout()])
-            sqcancel_pm = PassManager([Optimize1qGates(target=backend.target)])
+            sqcancel_pm = PassManager([Optimize1qGates(target=backend.target), Optimize1qGatesDecomposition(target=backend.target), ])
             sqopt_pm = StagedPassManager(stages=["optimization", "layout"], layout=layout_pm, optimization=sqcancel_pm)
         this_circuit = sqopt_pm.run(this_circuit)
         circs_to_return.append(this_circuit)
