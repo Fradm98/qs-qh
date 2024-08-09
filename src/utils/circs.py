@@ -28,6 +28,6 @@ def check_and_measure_active_qubits(circuit):
     return circuit
 
 def compute_uncompute(original_circuit, barrier=False):
-    to_return = original_circuit
+    to_return = original_circuit.copy()
     if barrier: to_return.barrier()
     return to_return.compose(original_circuit.inverse())
