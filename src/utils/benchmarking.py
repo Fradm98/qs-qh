@@ -12,6 +12,7 @@ import numpy as np
 import subprocess
 import plistlib
 import getpass
+import atexit
 import json
 import sys
 import os
@@ -19,6 +20,9 @@ import os
 class BenchmarkDB():
     def __init__(self, path):
         self.path = path
+        self.changed_permissions = False
+        self.password = getpass.getpass(prompt="Introduce superuser password")
+        atexit.register(self.clean_permissions)
         if os.path.exists(path):
             with open(path, "r") as f:
                 self._data = json.load(f)
@@ -28,10 +32,21 @@ class BenchmarkDB():
                 json.dump(self._data, f, indent=4)   
 
     def save(self):
-        with open(self.path, "w") as f:
-            json.dump(self._data, f, indent=4)
+        try:
+            with open(self.path, "w") as f:
+                json.dump(self._data, f, indent=4)
+        except PermissionError:
+            subprocess.run(["sudo", "-S", "chown", "cobos:wheel", self.path], input=f"{self.password}\n", text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.changed_permissions = True
+            with open(self.path, "w") as f:
+                json.dump(self._data, f, indent=4)
+    
+    def clean_permissions(self):
+        self.save()
+        if self.changed_permissions:
+            subprocess.run(["sudo", "-S", "chown", "root:wheel", self.path], input=f"{self.password}\n", text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    def execute(self, nqubits_arr, depths_arr, devices_arr, service, logical_circuit_generating_func, observable_generating_func, shots=4096, test_circuit_name=None, observable_name=None):
+    def execute(self, nqubits_arr, depths_arr, devices_arr, service, logical_circuit_generating_func, observable_generating_func, estimator_opt_dict, test_circuit_name=None, observable_name=None):
         nqubits_arr = check_and_convert_to_unique_list(nqubits_arr)
         depths_arr = check_and_convert_to_unique_list(depths_arr)
         
@@ -54,14 +69,10 @@ class BenchmarkDB():
         data_to_add["backends"] = sorted([backend.name for backend in backends_arr])
         data_to_add["test_circuit_name"] = test_circuit_name if test_circuit_name is not None else logical_circuit_generating_func.__name__
         data_to_add["observable_func_name"] = observable_name if observable_name is not None else observable_generating_func.__name__
+        data_to_add["estimator_opt_dict"] = estimator_opt_dict
         data_to_add["jobs"] = {}
 
         # Run the jobs and populate job-specific available information
-        estimator_opt_dict = {
-            "default_shots": shots,
-            "optimization_level": 0,
-            "resilience_level": 0
-        }
         for backend in backends_arr:
             pm = generate_preset_pass_manager(optimization_level=0, backend=backend)
             physical_circuits = pm.run(circuits)
@@ -70,7 +81,6 @@ class BenchmarkDB():
                 "job_id": job.job_id(),
                 "nqubits": circuit.num_qubits,
                 "depth": circuit.depth(),
-                "shots": shots,
                 "creation_time": job.metrics()["timestamps"]["created"],
                 "execution_time": None,
                 "ev": None
@@ -80,17 +90,20 @@ class BenchmarkDB():
         self._data.append(data_to_add)
         self.save()
 
-    def update_status(self, service, check_all=False):
-        for test in self._data[::-1]:
+    def update_status(self, service, check_all=False, print_mode=False):
+        for tn, test in enumerate(self._data[::-1]):
             one_to_be_completed = False
-            for job_dicts in test["jobs"].values():
-                for job_dict in job_dicts:
+            for jdn, job_dicts in enumerate(test["jobs"].values()):
+                for jn, job_dict in enumerate(job_dicts):
+                    if print_mode: print(f"\rUpdating benchmark index: {len(self._data) - tn}/{len(self._data)}, Backend: {jdn + 1}/{len(test["jobs"].values())}, Job: {jn + 1}/{len(job_dicts)}".ljust(100), end="")
                     if job_dict["execution_time"] is None:
                         one_to_be_completed = True
                         job = service.job(job_dict["job_id"])
                         if job.in_final_state():
                             job_dict["execution_time"] = job.metrics()["timestamps"]["finished"]
-                            job_dict["ev"] = float(job.result()[0].data.evs[0])
+                            if job.status() == "DONE":
+                                job_dict["ev"] = float(job.result()[0].data.evs[0])
+            self.save()
             if (not one_to_be_completed) and (not check_all):
                 break
         self.save()
