@@ -9,7 +9,12 @@ def convert_jobs_to_site_gauge_matrix(jobs_arr):
     first_success_index = 0
     while first_success_index < len(jobs_arr):
         try:
-            site_gauge_observable_matrix = np.full((len(jobs_arr), len(first_success_result := jobs_arr[first_success_index].result()[0].data.evs)), np.nan)
+            first_success_job = jobs_arr[first_success_index]
+            if not first_success_job.in_final_state():
+                raise TimeoutError("Some jobs are still to be finished")
+            else:
+                first_success_result = first_success_job.result()[0].data.evs[::-1]
+            site_gauge_observable_matrix = np.full((len(jobs_arr), len(first_success_result)), np.nan)
             break
         except RuntimeJobFailureError:
             if not printed_warning_header: 
@@ -21,7 +26,11 @@ def convert_jobs_to_site_gauge_matrix(jobs_arr):
     site_gauge_observable_matrix[first_success_index] = (1 - first_success_result[::-1])/2
     for i, job in enumerate(jobs_arr[first_success_index::], start=first_success_index):
         try:
-            site_gauge_observable_matrix[i] = (1 - job.result()[0].data.evs[::-1])/2
+            if not job.in_final_state():
+                raise TimeoutError("Some jobs are still to be finished")
+            else:
+                this_job_result = job.result()[0].data.evs[::-1]
+            site_gauge_observable_matrix[i] = (1 - this_job_result)/2
         except RuntimeJobFailureError:
             if not printed_warning_header: 
                 print("WARNING: Some jobs failed, the plot will be incomplete\nFAILED JOBS\nIndex | ID")
