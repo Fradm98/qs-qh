@@ -18,10 +18,10 @@ import sys
 import os
 
 class BenchmarkDB():
-    def __init__(self, path):
+    def __init__(self, path, password=None):
         self.path = path
         self.changed_permissions = False
-        self.password = getpass.getpass(prompt="Introduce superuser password")
+        self.password = getpass.getpass(prompt="Introduce superuser password") if password is None else password
         atexit.register(self.clean_permissions)
         if os.path.exists(path):
             with open(path, "r") as f:
@@ -46,7 +46,7 @@ class BenchmarkDB():
         if self.changed_permissions:
             subprocess.run(["sudo", "-S", "chown", "root:wheel", self.path], input=f"{self.password}\n", text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    def execute(self, nqubits_arr, depths_arr, devices_arr, service, logical_circuit_generating_func, observable_generating_func, estimator_opt_dict, test_circuit_name=None, observable_name=None):
+    def execute(self, nqubits_arr, depths_arr, devices_arr, service, logical_circuit_generating_func, observable_generating_func, estimator_opt_dicts, test_circuit_name=None, observable_name=None, optimization_level=2):
         nqubits_arr = check_and_convert_to_unique_list(nqubits_arr)
         depths_arr = check_and_convert_to_unique_list(depths_arr)
         
@@ -69,23 +69,26 @@ class BenchmarkDB():
         data_to_add["backends"] = sorted([backend.name for backend in backends_arr])
         data_to_add["test_circuit_name"] = test_circuit_name if test_circuit_name is not None else logical_circuit_generating_func.__name__
         data_to_add["observable_func_name"] = observable_name if observable_name is not None else observable_generating_func.__name__
-        data_to_add["estimator_opt_dict"] = estimator_opt_dict
+        # data_to_add["estimator_opt_dict"] = estimator_opt_dict
         data_to_add["jobs"] = {}
 
         # Run the jobs and populate job-specific available information
         for backend in backends_arr:
-            pm = generate_preset_pass_manager(optimization_level=0, backend=backend)
-            physical_circuits = pm.run(circuits)
-            this_jobs_arr = hexec.execute_estimator_batch(backend, estimator_opt_dict, physical_circuits, observable_generating_func)
-            this_backend_list = [{
-                "job_id": job.job_id(),
-                "nqubits": circuit.num_qubits,
-                "depth": circuit.depth(),
-                "creation_time": job.metrics()["timestamps"]["created"],
-                "execution_time": None,
-                "ev": None
-            } for job, circuit in zip(this_jobs_arr, circuits)]
-            data_to_add["jobs"][backend.name] = this_backend_list
+            data_to_add["jobs"][backend.name] = []
+            for estimator_opt_dict in estimator_opt_dicts:
+                pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend)
+                physical_circuits = pm.run(circuits)
+                this_jobs_arr = hexec.execute_estimator_batch(backend, estimator_opt_dict, physical_circuits, observable_generating_func)
+                this_backend_list = [{
+                    "job_id": job.job_id(),
+                    "nqubits": circuit.num_qubits,
+                    "depth": circuit.depth(),
+                    "creation_time": job.metrics()["timestamps"]["created"],
+                    "execution_time": None,
+                    "ev": None,
+                    "estimator_opt_dict": estimator_opt_dict
+                } for job, circuit in zip(this_jobs_arr, circuits)]
+                data_to_add["jobs"][backend.name] += this_backend_list
 
         self._data.append(data_to_add)
         self.save()
@@ -124,7 +127,7 @@ class BenchmarkDB():
     def _date_range_to_datetime_range(self, date_range):
         return [datetime.fromisoformat(datestr) if type(datestr)==str else datestr for datestr in date_range]
 
-    def _search_index_by_params(self, nqubits_arr=None, depths_arr=None, backends_arr=None, test_circuit_name_func=False, observable_name_func=None, date_range=None, limit=None):        
+    def _search_index_by_params(self, nqubits_arr=None, depths_arr=None, backends_arr=None, estimator_opt_dicts=None, test_circuit_name_func=False, observable_name_func=None, date_range=None, limit=None):        
         nqubits_arr = check_and_convert_to_unique_list(nqubits_arr)
         depths_arr = check_and_convert_to_unique_list(depths_arr)
         try:
@@ -140,6 +143,16 @@ class BenchmarkDB():
         if backends_name_arr is not None:
             backends_name_arr = self._backends_objs_to_names(backends_arr)
             search_functions.append(lambda test: test["backends"] == sorted(backends_name_arr))
+        if estimator_opt_dicts is not None:
+            def estimator_opt_dicts_searchf(test):
+                test_estimator_opt_dicts = []
+                for job_dicts_arr in test["jobs"].values():
+                    for job_dict in job_dicts_arr:
+                        this_estimator_opt = job_dict["estimator_opt_dict"]
+                        if this_estimator_opt not in test_estimator_opt_dicts:
+                            test_estimator_opt_dicts.append(this_estimator_opt)
+                return all([test_opt_dict in estimator_opt_dicts for test_opt_dict in test_estimator_opt_dicts])
+            search_functions.append(estimator_opt_dicts_searchf)                
         if test_circuit_name is not None:
             test_circuit_name = test_circuit_name_func.__name__ if callable(test_circuit_name_func) else test_circuit_name_func
             search_functions.append(lambda test: test["test_circuit_name"] == test_circuit_name)
@@ -175,8 +188,8 @@ class BenchmarkDB():
                 return i
         raise ValueError(f"No test was found with id: {id}")
     
-    def search_by_params(self, nqubits_arr=None, depths_arr=None, backends_arr=None, test_circuit_name_func=None, observable_name_func=None, date_range=None, limit=None):
-        indices = self._search_index_by_params(nqubits_arr, depths_arr, backends_arr, test_circuit_name_func, observable_name_func, date_range, limit)
+    def search_by_params(self, nqubits_arr=None, depths_arr=None, backends_arr=None, estimator_opt_dicts=None, test_circuit_name_func=None, observable_name_func=None, date_range=None, limit=None):
+        indices = self._search_index_by_params(nqubits_arr, depths_arr, backends_arr, estimator_opt_dicts, test_circuit_name_func, observable_name_func, date_range, limit)
         return [self._data[i] for i in indices]
     
     def search_by_id(self, id):
@@ -273,11 +286,11 @@ def generate_and_execute_launchctl_file_mac(python_script, *args, seconds_start_
     
     data = dict(
     Label="com.local.quantum.benchmark",
-    ProgramArguments=[sys.executable, os.path.abspath(python_script)] + list(args),
+    ProgramArguments=[sys.executable, os.path.abspath(python_script)] + list(args) + ["-p", password],
     StandardOutPath=f"{os.path.abspath(stdout_path if stdout_path is not None else "benchmarks.log")}",
     StandardErrorPath=f"{os.path.abspath(stderr_path if stdout_path is not None else "benchmarks.err")}",
-    WorkingDirectory=f"{os.path.abspath(working_directory) if working_directory is not None else os.getcwd()}",
-    KeepAlive={"PathState":{os.path.abspath(python_script):True}})
+    WorkingDirectory=f"{os.path.abspath(working_directory) if working_directory is not None else os.getcwd()}")
+    # KeepAlive={"PathState":{os.path.abspath(python_script):True}})
 
     if seconds_start_interval is not None: data["StartInterval"] = seconds_start_interval
 
@@ -289,17 +302,17 @@ def generate_and_execute_launchctl_file_mac(python_script, *args, seconds_start_
         start_calendar_dicts = []
         for start_relativedelta in start_relativedeltas:
             this_start_calendar = {}
-            if (min := start_relativedelta.minute) is not None: this_start_calendar["Minute"] = min
-            if (hour := start_relativedelta.hour) is not None: this_start_calendar["Hour"] = hour
+            if (min := start_relativedelta.minute) is not None: this_start_calendar["Minute"] = int(min)
+            if (hour := start_relativedelta.hour) is not None: this_start_calendar["Hour"] = int(hour)
             if (day := start_relativedelta.day) is not None:
                 if 1 <= day <= 31: 
-                    this_start_calendar["Day"] = day
+                    this_start_calendar["Day"] = int(day)
                 else:
                     raise ValueError("Days in start_relativedelta must be in range [1, 31]")
-            if (weekday := start_relativedelta.weekday) is not None: this_start_calendar["weekday"] = weekday.weekday + 1
+            if (weekday := start_relativedelta.weekday) is not None: this_start_calendar["weekday"] = int(weekday.weekday + 1)
             if (month := start_relativedelta.month) is not None:
                 if 1 <= month <= 12:
-                    this_start_calendar["Month"] = month
+                    this_start_calendar["Month"] = int(month)
                 else:
                     raise ValueError("Months in start_relativedelta must be in range [1, 12]")
             start_calendar_dicts.append(this_start_calendar)
@@ -331,3 +344,62 @@ def check_benchmark_status_mac(stdout_path=None, password=None):
                 print("\n".join(last_ten_lines))
     else:
         print("The benchmark is NOT running")
+
+def create_estimator_options(default_shots, optimization_levels, zne_extrapolator_noise_levels, measure_mitigations, dd_sequences, enable_twirling):
+    if type(default_shots) != list:
+        default_shots = [default_shots]
+    else:
+        default_shots = sorted(list(set(default_shots)))
+    if type(optimization_levels) != list:
+        optimization_levels = [optimization_levels]
+    else:
+        optimization_levels = sorted(list(set(optimization_levels)))
+    if type(zne_extrapolator_noise_levels) != list:
+        zne_extrapolator_noise_levels = [zne_extrapolator_noise_levels]
+    else:
+        unique_zne_extrapolator_noise_levels = []
+        for noise_level in zne_extrapolator_noise_levels:
+            if noise_level not in unique_zne_extrapolator_noise_levels:
+                unique_zne_extrapolator_noise_levels.append(noise_level)
+        zne_extrapolator_noise_levels = unique_zne_extrapolator_noise_levels
+    if type(measure_mitigations) != list:
+        measure_mitigations = [measure_mitigations]
+    else:
+        measure_mitigations = list(set(measure_mitigations))
+    if type(dd_sequences) != list:
+        dd_sequences = [dd_sequences]
+    else:
+        dd_sequences = list(set(dd_sequences))
+    if type(enable_twirling) != list:
+        enable_twirling = [enable_twirling]
+    else:
+        enable_twirling = list(set(enable_twirling))
+    
+    estimator_options = []
+    for shots, optimization_level, zne_extrapolator_noise_level, measure_mitigation, dd_sequence, twirling in product(default_shots, optimization_levels, zne_extrapolator_noise_levels, measure_mitigations, dd_sequences, enable_twirling):
+        this_estimator_options = {
+            "default_shots": shots,
+            "optimization_level": optimization_level,
+            "resilience_level": 0,
+            "resilience": {
+                "zne_mitigation": bool(zne_extrapolator_noise_level),
+                "measure_mitigation": measure_mitigation,
+                "pec_mitigation": False,
+                "zne": {
+                    "extrapolator": zne_extrapolator_noise_level[0], # zne_mitigation
+                    "noise_factors": zne_extrapolator_noise_level[1]
+                } if zne_extrapolator_noise_level else {}
+            },
+            "dynamical_decoupling": {
+                "enable": bool(dd_sequence),
+                "sequence_type": dd_sequence
+            },
+            "twirling": {
+                "enable_gates": bool(twirling),
+                "enable_measure": bool(twirling),
+                "num_randomizations": "auto",
+                "shots_per_randomization": "auto"
+            }
+        }
+        estimator_options.append(this_estimator_options)
+    return estimator_options
