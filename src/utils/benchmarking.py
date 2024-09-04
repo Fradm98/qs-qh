@@ -81,13 +81,13 @@ class BenchmarkDB():
                 this_jobs_arr = hexec.execute_estimator_batch(backend, estimator_opt_dict, physical_circuits, observable_generating_func)
                 this_backend_list = [{
                     "job_id": job.job_id(),
-                    "nqubits": circuit.num_qubits,
-                    "depth": circuit.depth(),
+                    "nqubits": nqubits,
+                    "depth": depth,
                     "creation_time": job.metrics()["timestamps"]["created"],
                     "execution_time": None,
                     "ev": None,
                     "estimator_opt_dict": estimator_opt_dict
-                } for job, circuit in zip(this_jobs_arr, circuits)]
+                } for job, (nqubits, depth) in zip(this_jobs_arr, product(nqubits_arr, depths_arr))]
                 data_to_add["jobs"][backend.name] += this_backend_list
 
         self._data.append(data_to_add)
@@ -119,9 +119,9 @@ class BenchmarkDB():
         backends_name_arr = []
         for backend in backends_arr:
             if type(backend) != str:
-                backends_arr.append(backend.name)
+                backends_name_arr.append(backend.name)
             else:
-                backends_arr.append(backend)
+                backends_name_arr.append(backend)
         return backends_name_arr
     
     def _date_range_to_datetime_range(self, date_range):
@@ -140,7 +140,7 @@ class BenchmarkDB():
             search_functions.append(lambda test: test["nqubits_arr"] == sorted(nqubits_arr))
         if depths_arr is not None:
             search_functions.append(lambda test: test["depth_arr"] == sorted(depths_arr))
-        if backends_name_arr is not None:
+        if backends_arr is not None:
             backends_name_arr = self._backends_objs_to_names(backends_arr)
             search_functions.append(lambda test: test["backends"] == sorted(backends_name_arr))
         if estimator_opt_dicts is not None:
@@ -151,14 +151,14 @@ class BenchmarkDB():
                         this_estimator_opt = job_dict["estimator_opt_dict"]
                         if this_estimator_opt not in test_estimator_opt_dicts:
                             test_estimator_opt_dicts.append(this_estimator_opt)
-                return all([test_opt_dict in estimator_opt_dicts for test_opt_dict in test_estimator_opt_dicts])
+                return any([test_opt_dict in estimator_opt_dicts for test_opt_dict in test_estimator_opt_dicts])
             search_functions.append(estimator_opt_dicts_searchf)                
-        if test_circuit_name is not None:
+        if test_circuit_name_func is not None:
             test_circuit_name = test_circuit_name_func.__name__ if callable(test_circuit_name_func) else test_circuit_name_func
             search_functions.append(lambda test: test["test_circuit_name"] == test_circuit_name)
-        if observable_name is not None:
+        if observable_name_func is not None:
             observable_name = observable_name_func.__name__ if callable(observable_name_func) else observable_name_func
-            search_functions.append(lambda test: test["observable_name"] == observable_name)
+            search_functions.append(lambda test: test["observable_func_name"] == observable_name)
         if date_range is not None:
             date_range = self._date_range_to_datetime_range(date_range)
             def date_range_searchf(test):
@@ -167,9 +167,12 @@ class BenchmarkDB():
                     for job_dict in job_dicts_arr:
                         if (exectime := job_dict["execution_time"]) is not None:
                             execution_dates.append(datetime.fromisoformat(exectime))
-                max_exec_time = max(execution_dates)
-                min_exec_time = min(execution_dates)
-                return (date_range[0] <= min_exec_time) and (date_range[1] >= max_exec_time)
+                if len(execution_dates) > 0:
+                    max_exec_time = max(execution_dates)
+                    min_exec_time = min(execution_dates)
+                    return (date_range[0] <= min_exec_time) and (date_range[1] >= max_exec_time)
+                else:
+                    return False
             search_functions.append(date_range_searchf)
 
         indices_to_return = []
@@ -196,72 +199,90 @@ class BenchmarkDB():
         ind = self._search_batch_index_by_id(id)
         return self._data[ind]
 
-    def plot_mean_error_by_date(self, nqubits_arr, depths_arr, backends_arr, logical_circuit_generating_func, observable_generating_func, date_range=None, shots=4096, simulator_max_bond_dimension=256, simulation_results_folder_path=None):
-        self.update_status()
-
+    def plot_mean_error_by_date(self, nqubits_arr, depths_arr, backends_arr, estimator_opt_dicts, logical_circuit_generating_func, observable_generating_func, test_circuit_name=None, observable_name=None, date_range=None, simulator_max_bond_dimension=256, simulation_results_folder_path=None, print_mode=False):
         # Create and optimize the circuits to run (For performance reasons, the result will be the same for the simulator)
         nqubits_arr = set(nqubits_arr)
         depths_arr = set(depths_arr)
         barrier_pm = PassManager([RemoveBarriers()])
-        pm = generate_preset_pass_manager(backend=AerSimulator(), optimization_level=2)
+        pm = generate_preset_pass_manager(optimization_level=2)
         circuits = []
         simulator_optimized_circuits = []
         for nqubits in nqubits_arr:
             for depth in depths_arr:
+                if print_mode: print(f"\rGenerating circuits / nqubits: {nqubits} / depth: {depth}".ljust(100), end="")
                 circuits.append(this_circuit := logical_circuit_generating_func(nqubits, depth))
                 this_opt_circuit = pm.run(barrier_pm.run(this_circuit))
                 simulator_optimized_circuits.append(this_opt_circuit)
 
         # Simulate the circuits
-        estimator_options = {"default_precision": 1/np.sqrt(shots)}
-        simulator_options = {
-            "method": "matrix_product_state",
-            "matrix_product_state_max_bond_dimension": simulator_max_bond_dimension,
-            "matrix_product_state_truncation_threshold": 1e-10
-        }
-        physical_circuit_name = logical_circuit_generating_func.__name__
-        observable_name = observable_generating_func.__name__
-        results_filename = f"benchmark_simresults_nqubits_{min(nqubits)}-{max(nqubits)}_depths_{min(depths_arr)}-{max(depths_arr)}_testcirc_{physical_circuit_name}_obsname_{observable_name}_bd_{simulator_max_bond_dimension}.txt"
-        results_filepath = os.path.join("" if simulation_results_folder_path is None else simulation_results_folder_path, results_filename)
-        if not os.path.isfile(results_filepath):
-            simulated_jobs = sexec.execute_simulation_estimator_batch(simulator_options, estimator_options, simulator_optimized_circuits, observable_generating_func)
-            simulated_evs = [job.result()[0].data.evs for job in simulated_jobs]
-            if simulation_results_folder_path is not None:
-                np.savetxt(results_filepath, simulated_evs)
+        perfect_evs = []
+        for estimator_opt_dict in estimator_opt_dicts:
+            estimator_options = {"default_precision": 1/np.sqrt(estimator_opt_dict["default_shots"])}
+            simulator_options = {
+                "method": "matrix_product_state",
+                "matrix_product_state_max_bond_dimension": simulator_max_bond_dimension,
+                "matrix_product_state_truncation_threshold": 1e-10
+            }
+            physical_circuit_name = logical_circuit_generating_func.__name__ if test_circuit_name is None else test_circuit_name
+            observable_name = observable_generating_func.__name__ if observable_name is None else observable_name
+            results_filename = f"benchmark_simresults_nqubits_{min(nqubits_arr)}-{max(nqubits_arr)}_depths_{min(depths_arr)}-{max(depths_arr)}_testcirc_{physical_circuit_name}_obsname_{observable_name}_bd_{simulator_max_bond_dimension}_shots_{estimator_opt_dict["default_shots"]}.txt"
+            results_filepath = os.path.join("" if simulation_results_folder_path is None else simulation_results_folder_path, results_filename)
+            if not os.path.isfile(results_filepath):
+                if print_mode: print(f"\rSimulating circuits for shots = {estimator_opt_dict["default_shots"]}".ljust(100), end="")
+                simulated_circuit_depths = [circuit.depth() for circuit in simulator_optimized_circuits]
+                to_return_evs = np.ones(len(simulated_circuit_depths))
+                to_run = [circuit for circuit in simulator_optimized_circuits if circuit.depth() > 0]
+                simulated_jobs = sexec.execute_simulation_estimator_batch(simulator_options, estimator_options, to_run, observable_generating_func)
+                simulated_evs = [job.result()[0].data.evs for job in simulated_jobs]
+                to_return_evs[np.greater(simulated_circuit_depths, 0)] = simulated_evs
+                perfect_evs += list(to_return_evs)
+                if simulation_results_folder_path is not None:
+                    np.savetxt(results_filepath, simulated_evs)
         
         # Get observables for each number of qubits and depths
         backends_name_arr = self._backends_objs_to_names(backends_arr)
-        found_benchmarks = self.search_by_params(nqubits_arr, depths_arr, backends_arr, logical_circuit_generating_func, observable_generating_func, date_range)
-        measurement_dates = {x:{} for x in product(nqubits_arr, depths_arr)}
-        measured_evs = {x:{} for x in product(nqubits_arr, depths_arr)}
+        print(f"\rSearching dabatase".ljust(100), end="")
+        found_benchmarks = self.search_by_params(nqubits_arr, depths_arr, backends_arr, estimator_opt_dicts, test_circuit_name, observable_name, date_range)
+        estimator_opt_dicts_str = [json.dumps(estimator_opt_dict) for estimator_opt_dict in estimator_opt_dicts]
+        measurement_dates = {x:{} for x in product(nqubits_arr, depths_arr, estimator_opt_dicts_str)}
+        measured_evs = {x:{} for x in product(nqubits_arr, depths_arr, estimator_opt_dicts_str)}
         for nqubits in nqubits_arr:
             for depth in depths_arr:
-                this_measurement_dates = {backend_name: [] for backend_name in backends_name_arr}
-                this_measured_evs = {backend_name: [] for backend_name in backends_name_arr}
-                for benchmark in found_benchmarks:
-                    for backend_name, jobs_dicts in benchmark["jobs"]:
-                        for job_dict in jobs_dicts:
-                            if (job_dict["nqubits"] == nqubits) and (job_dict["depth"] == depth):
-                                this_measurement_dates[backend_name].append(datetime.fromisoformat(job_dict["execution_time"]))
-                                this_measured_evs[backend_name].append(job_dict["ev"])
-                measurement_dates[(nqubits, depth)] = this_measurement_dates
-                measured_evs[(nqubits, depth)] = this_measured_evs
+                if print_mode: print(f"\rRetrieving jobs for nqubits = {nqubits} / depth = {depth}".ljust(100), end="")
+                for i, estimator_opt_dict_str in enumerate(estimator_opt_dicts_str):
+                    this_measurement_dates = {backend_name: [] for backend_name in backends_name_arr}
+                    this_measured_evs = {backend_name: [] for backend_name in backends_name_arr}
+                    for benchmark in found_benchmarks:
+                        for backend_name, jobs_dicts in benchmark["jobs"].items():
+                            for job_dict in jobs_dicts:
+                                if (job_dict["nqubits"] == nqubits) and (job_dict["depth"] == depth) and (job_dict["estimator_opt_dict"] == estimator_opt_dicts[i]):
+                                    if (job_dict["execution_time"] is not None) and (job_dict["ev"] is not None):
+                                        this_measurement_dates[backend_name].append(datetime.fromisoformat(job_dict["execution_time"]))
+                                        this_measured_evs[backend_name].append(job_dict["ev"])
+                    measurement_dates[(nqubits, depth, estimator_opt_dict_str)] = this_measurement_dates
+                    measured_evs[(nqubits, depth, estimator_opt_dict_str)] = this_measured_evs
+
+        if print_mode: print("", end="")
 
         # Plot the results
-        fig, axs = plt.subplots(nrows=len(nqubits_arr)*len(depths_arr), figsize=[10, 7*len(nqubits_arr)*len(depths_arr)])
-        for i, nqubits in enumerate(nqubits_arr):
-            for j, depth in enumerate(depths_arr):
-                for backend_name in backends_name_arr:
-                    errors = np.abs(np.array(measured_evs[(nqubits, depth)][backend_name]) - simulated_evs[i+j])/np.abs(simulated_evs[i+j])
-                    date_locator = pltdates.AutoDateLocator()
-                    date_formatter = pltdates.ConciseDateFormatter(date_locator, formats=['%Y', '%d/%b', '%d/%b', '%H:%M', '%H:%M', '%S.%f'], offset_formats=['', '%Y', '%b/%Y', '%d-%b-%Y', '%d/%b/%Y', '%d/%b/%Y %H:%M'])
-                    axs[i+j].plot(measurement_dates[(nqubits, depth)][backend_name], errors, "o-", linewidth=2, markersize=8, label=backend_name)
-                    axs[i+j].xaxis.set_major_locator(date_locator)
-                    axs[i+j].xaxis.set_major_formatter(date_formatter)
-                    axs[i+j].tick_params(axis="x", rotation=45, ha="right")
-                    axs[i+j].set_title(f"Qubits: {nqubits} / Depth: {depth}")
-                    axs[i+j].legend()
-                    axs[i+j].grid()
+        fig, axs, = plt.subplots(nrows=len(nqubits_arr)*len(depths_arr)*len(estimator_opt_dicts), figsize=[10, 12*len(nqubits_arr)*len(depths_arr)], sharex=True)
+        njobs = len(nqubits_arr)*len(depths_arr)
+        for k, estimator_opt_dict_str in enumerate(estimator_opt_dicts_str):
+            for i, nqubits in enumerate(nqubits_arr):
+                for j, depth in enumerate(depths_arr):
+                    for backend_name in backends_name_arr:
+                        errors = np.abs(np.array(measured_evs[(nqubits, depth, estimator_opt_dict_str)][backend_name]) - perfect_evs[i+j+k*njobs])
+                        date_locator = pltdates.AutoDateLocator()
+                        date_formatter = pltdates.ConciseDateFormatter(date_locator, formats=['%Y', '%d/%b', '%d/%b', '%H:%M', '%H:%M', '%S.%f'], offset_formats=['', '%Y', '%b/%Y', '%d-%b-%Y', '%d/%b/%Y', '%d/%b/%Y %H:%M'])
+                        axs[i+j+k*njobs].plot(measurement_dates[(nqubits, depth, estimator_opt_dict_str)][backend_name], errors, "o-", linewidth=2, markersize=8, label=backend_name)
+                        axs[i+j+k*njobs].xaxis.set_major_locator(date_locator)
+                        axs[i+j+k*njobs].xaxis.set_major_formatter(date_formatter)
+                        axs[i+j+k*njobs].tick_params(axis="x", rotation=45,) #ha="right")
+                        axs[i+j+k*njobs].set_ylabel("Error")
+                        axs[i+j+k*njobs].set_title(f"Qubits: {nqubits} / Depth: {depth} / Options: {k + 1}")
+                        axs[i+j+k*njobs].legend()
+                        axs[i+j+k*njobs].grid()
+        plt.tight_layout()
 
 def check_and_convert_to_unique_list(arg):
     try:
