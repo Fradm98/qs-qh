@@ -262,7 +262,7 @@ class BenchmarkDB():
                     measurement_dates[(nqubits, depth, estimator_opt_dict_str)] = this_measurement_dates
                     measured_evs[(nqubits, depth, estimator_opt_dict_str)] = this_measured_evs
 
-        if print_mode: print("", end="")
+        if print_mode: print("\r".ljust(100), end="")
 
         # Plot the results
         fig, axs, = plt.subplots(nrows=len(nqubits_arr)*len(depths_arr)*len(estimator_opt_dicts), figsize=[10, 12*len(nqubits_arr)*len(depths_arr)], sharex=True)
