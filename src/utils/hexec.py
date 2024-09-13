@@ -89,6 +89,9 @@ class ExecDB:
     def execute_estimator_batch(self, backend, estimator_opt_dict, physical_circuits, observable_generating_func, observable_name=None):
         execute_estimator_batch(backend, estimator_opt_dict, physical_circuits, observable_generating_func, self, observable_name)
 
+    def execute_sampler_batch(self, backend, sampler_opt_dict, physical_circuits):
+        execute_sampler_batch(backend, sampler_opt_dict, physical_circuits, self)
+
 def transpile(logical_circuits, optimization_level, backend, largest_layout=None):
     try:
         logical_circuits = list(logical_circuits)
