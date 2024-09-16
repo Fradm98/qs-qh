@@ -1,5 +1,6 @@
 from qiskit.primitives.base.base_primitive_job import BasePrimitiveJob
 from qiskit_ibm_runtime.runtime_job_v2 import RuntimeJobFailureError
+from qiskit.primitives.primitive_job import PrimitiveJob
 from qiskit_ibm_runtime.runtime_job import RuntimeJob
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,7 +11,7 @@ def convert_jobs_to_site_gauge_matrix(jobs_arr):
     while first_success_index < len(jobs_arr):
         try:
             first_success_job = jobs_arr[first_success_index]
-            if not first_success_job.in_final_state():
+            if not first_success_job.in_final_state() and type(first_success_job) is not PrimitiveJob:
                 raise TimeoutError("Some jobs are still to be finished")
             else:
                 first_success_result = first_success_job.result()[0].data.evs[::-1]
@@ -26,7 +27,7 @@ def convert_jobs_to_site_gauge_matrix(jobs_arr):
     site_gauge_observable_matrix[first_success_index] = (1 - first_success_result[::-1])/2
     for i, job in enumerate(jobs_arr[first_success_index::], start=first_success_index):
         try:
-            if not job.in_final_state():
+            if not job.in_final_state() and type(first_success_job) is not PrimitiveJob:
                 raise TimeoutError("Some jobs are still to be finished")
             else:
                 this_job_result = job.result()[0].data.evs[::-1]
@@ -59,7 +60,7 @@ def x_t_plot(site_gauge_observable_matrix, nxticks=5, filepath=""):
 
     aspect = site_gauge_observable_matrix.shape[0]/site_gauge_observable_matrix.shape[1]/15
 
-    plt.imshow(site_gauge_observable_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2)
+    plt.imshow(site_gauge_observable_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2, vmax=1, vmin=0)
     plt.title(r"Particle \& Gauge occupation")
     cbar = plt.colorbar()
     cbar.ax.set_ylabel(r"$(1 - \langle Z \rangle)/2$", labelpad=10)

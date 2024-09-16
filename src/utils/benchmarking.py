@@ -199,7 +199,7 @@ class BenchmarkDB():
         ind = self._search_batch_index_by_id(id)
         return self._data[ind]
 
-    def plot_mean_error_by_date(self, nqubits_arr, depths_arr, backends_arr, estimator_opt_dicts, logical_circuit_generating_func, observable_generating_func, test_circuit_name=None, observable_name=None, date_range=None, simulator_max_bond_dimension=256, simulation_results_folder_path=None, print_mode=False):
+    def plot_mean_error_by_date(self, nqubits_arr, depths_arr, backends_arr, estimator_opt_dicts, logical_circuit_generating_func, observable_generating_func, test_circuit_name=None, observable_name=None, date_range=None, simulator_max_bond_dimension=256, simulation_results_folder_path=None, plot_filepath=None, print_mode=False):
         # Create and optimize the circuits to run (For performance reasons, the result will be the same for the simulator)
         nqubits_arr = set(nqubits_arr)
         depths_arr = set(depths_arr)
@@ -283,6 +283,8 @@ class BenchmarkDB():
                         axs[i+j+k*njobs].legend()
                         axs[i+j+k*njobs].grid()
         plt.tight_layout()
+        if plot_filepath is not None:
+            plt.savefig(plot_filepath, dpi=300, facecolor="none")
 
 def check_and_convert_to_unique_list(arg):
     try:
