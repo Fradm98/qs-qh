@@ -42,7 +42,7 @@ def sparse_hamiltonian(J, h, lamb, chain_length):
     for n in range(chain_length - 1):
         hamiltonian += -J*paulis.sparse_pauli_z(2*n, nqubits) - h*paulis.sparse_pauli_z(2*n + 1, nqubits)
         hamiltonian += -lamb*(paulis.sparse_pauli_x(2*(n+1), nqubits) @ paulis.sparse_pauli_x(2*n + 1, nqubits) @ paulis.sparse_pauli_x(2*n, nqubits))
-    hamiltonian += -paulis.sparse_pauli_z(2*chain_length - 2, nqubits)
+    hamiltonian += -J*paulis.sparse_pauli_z(2*chain_length - 2, nqubits)
 
     return hamiltonian
 
