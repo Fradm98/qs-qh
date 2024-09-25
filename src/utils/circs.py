@@ -1,4 +1,5 @@
 from qiskit.converters import circuit_to_instruction, dag_to_circuit, circuit_to_dag
+from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit import QuantumCircuit
 import numpy as np
 
@@ -31,3 +32,7 @@ def compute_uncompute(original_circuit, barrier=False):
     to_return = original_circuit.copy()
     if barrier: to_return.barrier()
     return to_return.compose(original_circuit.inverse())
+
+def simplify_logical_circuits(circuits, optimization_level=3):
+    pm = generate_preset_pass_manager(optimization_level=optimization_level)
+    return pm.run(circuits)
