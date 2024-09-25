@@ -381,7 +381,7 @@ def reduce_binary_string_representation(pauli_representation):
     R_inv = (R3_inv @ R2_inv @ R1_inv @ R0_inv) % 2
     return S5, R_inv, instructions
 
-def gauge_diagonal_basis_change_circuit(observables, postselection_ops):
+def paulis_diagonalization_circuit(observables, postselection_ops):
     # Quantum 5, 385 (2021)
     postselection_ops = PauliList([Pauli(postselection_op) for postselection_op in postselection_ops])
     observables = PauliList([Pauli(observable) for observable in observables])
@@ -396,8 +396,3 @@ def gauge_diagonal_basis_change_circuit(observables, postselection_ops):
     Sp = binary_pauli_representation(commuting_set)
     redS, R_inv, instructions = reduce_binary_string_representation(Sp)
     return instructions.to_qiskit_circuit(), R_inv
-
-# ------------------------------------------
-#   POSTSELECTED JOBS CREATION & EXECUTION
-# ------------------------------------------
-
