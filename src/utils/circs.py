@@ -1,7 +1,14 @@
 from qiskit.converters import circuit_to_instruction, dag_to_circuit, circuit_to_dag
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
+from qiskit.dagcircuit import DAGCircuit
 from qiskit import QuantumCircuit
 import numpy as np
+
+def count_non_idle_qubits(circ):
+    if type(circ) is not DAGCircuit:
+        dag = circuit_to_dag(circ)
+    idle_wires = list(dag.idle_wires())
+    return dag.num_qubits() - len(idle_wires)
 
 def remove_idle_qwires(circ):
     dag = circuit_to_dag(circ)
