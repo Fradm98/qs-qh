@@ -150,7 +150,7 @@ def execute_estimator_batch(backend, estimator_opt_dict, transpiled_circuits, ob
     job_objs = []
 
     with Batch(backend=backend) as batch:
-        estimator = EstimatorV2(session=batch, options=estimator_opt_dict)
+        estimator = EstimatorV2(mode=batch, options=estimator_opt_dict)
         for circ, obs in zip(transpiled_circuits, mapped_observables):
             pub = (circ, obs)
             job_objs.append(estimator.run([pub]))
