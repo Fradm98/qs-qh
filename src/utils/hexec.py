@@ -176,3 +176,9 @@ def execute_sampler_batch(backend, sampler_opt_dict, transpiled_circuits, job_db
         job_db.add(sampler_opt_dict, transpiled_circuits, "Sampler", job_ids)
 
     return job_objs
+
+def get_backend_best_qubit_chain(backend, nqubits):
+    qlists = backend.properties().general_qlists
+    for qlist in qlists:
+        if qlist["name"] == f"lf_{nqubits:d}":
+            return qlist["qubits"]
