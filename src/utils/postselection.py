@@ -1,4 +1,4 @@
-from utils.circs import simplify_logical_circuits
+from utils.circs import simplify_logical_circuits, count_non_idle_qubits
 from qiskit.quantum_info import Pauli, PauliList
 from qiskit import QuantumCircuit
 from collections import Counter
@@ -33,6 +33,54 @@ def count_non_diagonal_qubits(commuting_pauli_set):
         if this_non_diagonal_qubits > max_non_diagonal_qubits:
             max_non_diagonal_qubits = this_non_diagonal_qubits
     return max_non_diagonal_qubits
+
+def operators_affecting_qb_range(first, last, operators, return_operator_range=False):
+    operators = PauliList(operators)
+    affecting_operators = []
+    first_affected_qb = last
+    last_affected_qb = first
+    for op in operators:
+        op_str = str(op)
+        sub_op_string = op_str[first:last+1]
+        present_paulis = set(sub_op_string)
+        if len(present_paulis - {"I"}) > 0:
+            affecting_operators.append(op)
+            if return_operator_range:
+                non_identity_indices = [i for i, c in enumerate(op_str) if c != "I"]
+                this_first_affected_qb = min(non_identity_indices)
+                this_last_affected_qb = max(non_identity_indices)
+                if this_first_affected_qb < first_affected_qb:
+                    first_affected_qb = this_first_affected_qb
+                if this_last_affected_qb > last_affected_qb:
+                    last_affected_qb = this_last_affected_qb
+    if return_operator_range:
+        return PauliList(affecting_operators), (first_affected_qb, last_affected_qb)
+    else:
+        return PauliList(affecting_operators)
+
+def diagonalization_susceptible_qb_range(observables, postselection_ops, return_operators=False):
+    if type(observables) != list:
+        observables = [observables]
+    operator_ranges = np.zeros((len(observables), 2))
+    if return_operators: operators_affecting_obs_range = {}
+    for i, observable in enumerate(observables):
+        observable_str = str(Pauli(observable))
+        first_obs_qb = len(observable_str)
+        last_obs_qb = 0
+        for i, c in enumerate(observable_str):
+            if c in ["X", "Y"]:
+                if i < first_obs_qb:
+                    first_obs_qb = i
+                elif i > last_obs_qb:
+                    last_obs_qb = i
+        operators_affecting_obs_range, operators_range = operators_affecting_qb_range(first_obs_qb, last_obs_qb, observable + postselection_ops, return_operator_range=True)
+        operator_ranges[i, :] = operators_range
+        if return_operators: operators_affecting_obs_range += set(operators_affecting_obs_range)
+    operators_range = (np.min(operator_ranges[:, 0]), np.max(operator_ranges[:, 1]))
+    if return_operators:
+        return operators_range, PauliList(operators_affecting_obs_range)
+    else:
+        return operator_ranges
 
 def binary_pauli_representation(commuting_pauli_set):
     Sz = commuting_pauli_set.z[:, ::-1].T
@@ -381,7 +429,7 @@ def reduce_binary_string_representation(pauli_representation):
     R_inv = (R3_inv @ R2_inv @ R1_inv @ R0_inv) % 2
     return S5, R_inv, instructions
 
-def paulis_diagonalization_circuit(observables, postselection_ops):
+def paulis_diagonalization_circuit(commuting_pauli_list):
     # Quantum 5, 385 (2021)
     postselection_ops = PauliList([Pauli(postselection_op) for postselection_op in postselection_ops])
     observables = PauliList([Pauli(observable) for observable in observables])
@@ -389,10 +437,33 @@ def paulis_diagonalization_circuit(observables, postselection_ops):
     if not all_commute:
         raise ValueError("All observables and postselection operators must commute")
     nqubits = len(postselection_ops[0])
-    commuting_set = postselection_ops + observables
     non_diagonal_qubits_num = count_non_diagonal_qubits(commuting_set)
     if non_diagonal_qubits_num == 0:
         return QuantumCircuit(nqubits)
     Sp = binary_pauli_representation(commuting_set)
     redS, R_inv, instructions = reduce_binary_string_representation(Sp)
     return instructions.to_qiskit_circuit(), R_inv
+
+def physical_diagonalization_circuit(backend, observable, postselection_ops):
+    # affected_qubits = 
+    pass
+
+# -----------------------------------------
+#     CIRCUIT EXECUTION AND MEASUREMENT
+# -----------------------------------------
+
+def append_diagonalization_circuit():
+    pass
+
+def execute_postselected_sampler_batch(backend, sampler_opt_dict, transpiled_circuits, postselcts_generating_func, observable_generating_func, shots_per_observable, job_db=None):
+    if type(observable_generating_funcs) != list:
+        observable_generating_funcs = [observable_generating_funcs]
+
+    nqubits = np.max([count_non_idle_qubits(circ) for circ in transpiled_circuits])
+    postselection_ops = PauliList(postselcts_generating_func)
+    logical_observables = PauliList([Pauli(observable) for observable in observable_generating_func])
+
+    all_commute = check_postselection_observable_commutation(logical_observables, postselection_ops)
+    if not all_commute:
+        raise ValueError("All observables and postselection operators must commute")
+
