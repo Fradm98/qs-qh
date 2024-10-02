@@ -4,6 +4,7 @@
 # -----------------------------------------------
 
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
+from qiskit.quantum_info import Pauli, PauliList, SparsePauliOp
 from qiskit_ibm_runtime import Batch, EstimatorV2, SamplerV2
 from utils.circs import check_and_measure_active_qubits
 import numpy as np
@@ -129,7 +130,7 @@ def map_obs_to_circs(transpiled_circuits, observable_generating_funcs, return_la
             layout = transpiled_circuit.layout.final_index_layout()
             this_mapped_observables = []
             for observable_generating_func in observable_generating_funcs:
-                logical_observable = observable_generating_func(len(layout))
+                logical_observable = SparsePauliOp(observable_generating_func(len(layout)))
                 this_mapped_observables.append(logical_observable.apply_layout(transpiled_circuit.layout))
             if return_layouts: layouts.append(layout)
         else:
