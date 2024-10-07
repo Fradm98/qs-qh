@@ -236,7 +236,7 @@ def erradj_particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, pa
         state_preparation_physical_circuit = state_prep_pm.run(state_preparation_logical_circ)
         this_time_physical_circuit = state_preparation_physical_circuit.compose(this_trotter_layer_physical_circuit.repeat(nlayers_arr[i+1])).decompose()
         this_time_physical_circuit = remove_idle_qwires(this_time_physical_circuit)
-        qubit_ind_map = {k:v for k,v in zip(np.argsort(final_index_layout), final_index_layout)}
+        qubit_ind_map = {i:final_index_layout[pqb] for i, pqb in enumerate(np.argsort(final_index_layout))}
         layout_dict = {qubit_ind_map[i]:this_time_physical_circuit.qubits[i] for i in range(this_time_physical_circuit.num_qubits)}
         layout_pm = PassManager([SetLayout(layout=Layout(layout_dict)), FullAncillaAllocation(coupling_map=backend.target), ApplyLayout()])
         sqcancel_pm = PassManager([Optimize1qGates(target=backend.target), Optimize1qGatesDecomposition(target=backend.target), Optimize1qGatesSimpleCommutation(target=backend.target)])
