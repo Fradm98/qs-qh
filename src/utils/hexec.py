@@ -7,6 +7,7 @@ from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit.quantum_info import Pauli, PauliList, SparsePauliOp
 from qiskit_ibm_runtime import Batch, EstimatorV2, SamplerV2
 from utils.circs import check_and_measure_active_qubits
+from itertools import product
 import numpy as np
 import json
 import os
@@ -142,7 +143,7 @@ def map_obs_to_circs(transpiled_circuits, observable_generating_funcs, return_la
     else:
         return mapped_observables
 
-def execute_estimator_batch(backend, estimator_opt_dict, transpiled_circuits, observable_generating_funcs, job_db=None, observable_name=None):    
+def execute_estimator_batch(backend, estimator_opt_dict, transpiled_circuits, observable_generating_funcs, extra_options=None, job_db=None, observable_name=None):    
     if type(transpiled_circuits) != list:
         transpiled_circuits = [transpiled_circuits]
 
@@ -158,7 +159,11 @@ def execute_estimator_batch(backend, estimator_opt_dict, transpiled_circuits, ob
     if job_db is not None:
         observables_func_name = observable_generating_funcs.__name__ if observable_name is None else observable_name
         job_ids = [job.job_id() for job in job_objs]
-        job_db.add(estimator_opt_dict, transpiled_circuits, observables_func_name, job_ids)
+        if extra_options is not None:
+            batch_args = extra_options | estimator_opt_dict
+        else:
+            batch_args = estimator_opt_dict
+        job_db.add(batch_args, transpiled_circuits, observables_func_name, job_ids)
 
     return job_objs
 
@@ -182,3 +187,62 @@ def get_backend_best_qubit_chain(backend, nqubits):
     for qlist in qlists:
         if qlist["name"] == f"lf_{nqubits:d}":
             return qlist["qubits"]
+        
+def create_estimator_options(default_shots, optimization_levels, zne_extrapolator_noise_levels, measure_mitigations, dd_sequences, enable_twirling):
+    if type(default_shots) != list:
+        default_shots = [default_shots]
+    else:
+        default_shots = sorted(list(set(default_shots)))
+    if type(optimization_levels) != list:
+        optimization_levels = [optimization_levels]
+    else:
+        optimization_levels = sorted(list(set(optimization_levels)))
+    if type(zne_extrapolator_noise_levels) != list:
+        zne_extrapolator_noise_levels = [zne_extrapolator_noise_levels]
+    else:
+        unique_zne_extrapolator_noise_levels = []
+        for noise_level in zne_extrapolator_noise_levels:
+            if noise_level not in unique_zne_extrapolator_noise_levels:
+                unique_zne_extrapolator_noise_levels.append(noise_level)
+        zne_extrapolator_noise_levels = unique_zne_extrapolator_noise_levels
+    if type(measure_mitigations) != list:
+        measure_mitigations = [measure_mitigations]
+    else:
+        measure_mitigations = list(set(measure_mitigations))
+    if type(dd_sequences) != list:
+        dd_sequences = [dd_sequences]
+    else:
+        dd_sequences = list(set(dd_sequences))
+    if type(enable_twirling) != list:
+        enable_twirling = [enable_twirling]
+    else:
+        enable_twirling = list(set(enable_twirling))
+    
+    estimator_options = []
+    for shots, optimization_level, zne_extrapolator_noise_level, measure_mitigation, dd_sequence, twirling in product(default_shots, optimization_levels, zne_extrapolator_noise_levels, measure_mitigations, dd_sequences, enable_twirling):
+        this_estimator_options = {
+            "default_shots": shots,
+            "optimization_level": optimization_level,
+            "resilience_level": 0,
+            "resilience": {
+                "zne_mitigation": bool(zne_extrapolator_noise_level),
+                "measure_mitigation": measure_mitigation,
+                "pec_mitigation": False,
+                "zne": {
+                    "extrapolator": zne_extrapolator_noise_level[0], # zne_mitigation
+                    "noise_factors": zne_extrapolator_noise_level[1]
+                } if zne_extrapolator_noise_level else {}
+            },
+            "dynamical_decoupling": {
+                "enable": bool(dd_sequence),
+                "sequence_type": dd_sequence
+            },
+            "twirling": {
+                "enable_gates": bool(twirling),
+                "enable_measure": bool(twirling),
+                "num_randomizations": "auto",
+                "shots_per_randomization": "auto"
+            }
+        }
+        estimator_options.append(this_estimator_options)
+    return estimator_options
