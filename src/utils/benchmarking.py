@@ -1,7 +1,6 @@
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit.transpiler.passmanager import PassManager
 from qiskit.transpiler.passes import RemoveBarriers
-from qiskit_aer import AerSimulator
 import matplotlib.dates as pltdates
 import matplotlib.pyplot as plt
 from itertools import product
@@ -233,7 +232,7 @@ class BenchmarkDB():
                 to_return_evs = np.ones(len(simulated_circuit_depths))
                 to_run = [circuit for circuit in simulator_optimized_circuits if circuit.depth() > 0]
                 simulated_jobs = sexec.execute_simulation_estimator_batch(simulator_options, estimator_options, to_run, observable_generating_func)
-                simulated_evs = [job.result()[0].data.evs for job in simulated_jobs]
+                simulated_evs = np.array([job.result()[0].data.evs[0] for job in simulated_jobs])
                 to_return_evs[np.greater(simulated_circuit_depths, 0)] = simulated_evs
                 perfect_evs += list(to_return_evs)
                 if simulation_results_folder_path is not None:
@@ -367,62 +366,3 @@ def check_benchmark_status_mac(stdout_path=None, password=None):
                 print("\n".join(last_ten_lines))
     else:
         print("The benchmark is NOT running")
-
-def create_estimator_options(default_shots, optimization_levels, zne_extrapolator_noise_levels, measure_mitigations, dd_sequences, enable_twirling):
-    if type(default_shots) != list:
-        default_shots = [default_shots]
-    else:
-        default_shots = sorted(list(set(default_shots)))
-    if type(optimization_levels) != list:
-        optimization_levels = [optimization_levels]
-    else:
-        optimization_levels = sorted(list(set(optimization_levels)))
-    if type(zne_extrapolator_noise_levels) != list:
-        zne_extrapolator_noise_levels = [zne_extrapolator_noise_levels]
-    else:
-        unique_zne_extrapolator_noise_levels = []
-        for noise_level in zne_extrapolator_noise_levels:
-            if noise_level not in unique_zne_extrapolator_noise_levels:
-                unique_zne_extrapolator_noise_levels.append(noise_level)
-        zne_extrapolator_noise_levels = unique_zne_extrapolator_noise_levels
-    if type(measure_mitigations) != list:
-        measure_mitigations = [measure_mitigations]
-    else:
-        measure_mitigations = list(set(measure_mitigations))
-    if type(dd_sequences) != list:
-        dd_sequences = [dd_sequences]
-    else:
-        dd_sequences = list(set(dd_sequences))
-    if type(enable_twirling) != list:
-        enable_twirling = [enable_twirling]
-    else:
-        enable_twirling = list(set(enable_twirling))
-    
-    estimator_options = []
-    for shots, optimization_level, zne_extrapolator_noise_level, measure_mitigation, dd_sequence, twirling in product(default_shots, optimization_levels, zne_extrapolator_noise_levels, measure_mitigations, dd_sequences, enable_twirling):
-        this_estimator_options = {
-            "default_shots": shots,
-            "optimization_level": optimization_level,
-            "resilience_level": 0,
-            "resilience": {
-                "zne_mitigation": bool(zne_extrapolator_noise_level),
-                "measure_mitigation": measure_mitigation,
-                "pec_mitigation": False,
-                "zne": {
-                    "extrapolator": zne_extrapolator_noise_level[0], # zne_mitigation
-                    "noise_factors": zne_extrapolator_noise_level[1]
-                } if zne_extrapolator_noise_level else {}
-            },
-            "dynamical_decoupling": {
-                "enable": bool(dd_sequence),
-                "sequence_type": dd_sequence
-            },
-            "twirling": {
-                "enable_gates": bool(twirling),
-                "enable_measure": bool(twirling),
-                "num_randomizations": "auto",
-                "shots_per_randomization": "auto"
-            }
-        }
-        estimator_options.append(this_estimator_options)
-    return estimator_options
