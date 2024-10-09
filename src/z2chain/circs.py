@@ -46,11 +46,11 @@ class TotalSingleBodyPropagator(QuantumCircuit):
         t_tau = Parameter("t_τ")
         t_sigma = Parameter("t_σ")
         if x_basis:
-            self.rx(2*t_tau, np.arange(0, self.num_qubits, 2))
-            self.rx(2*t_sigma, np.arange(1, self.num_qubits, 2))
+            self.rx(-2*t_tau, np.arange(0, self.num_qubits, 2))
+            self.rx(-2*t_sigma, np.arange(1, self.num_qubits, 2))
         else:
-            self.rz(2*t_tau, np.arange(0, self.num_qubits, 2))
-            self.rz(2*t_sigma, np.arange(1, self.num_qubits, 2))
+            self.rz(-2*t_tau, np.arange(0, self.num_qubits, 2))
+            self.rz(-2*t_sigma, np.arange(1, self.num_qubits, 2))
 
 class TotalInteractionPropagator(QuantumCircuit):
     def __init__(self, chain_length, x_basis=False):
@@ -71,15 +71,39 @@ class TotalInteractionPropagator(QuantumCircuit):
             self.append(local_prop_instruction2, list(qubits))
 
         if x_basis:
-            self.rz(2*t, np.arange(1, nqubits, 2))
+            self.rz(-2*t, np.arange(1, nqubits, 2))
         else:
-            self.rx(2*t, np.arange(1, nqubits, 2))
+            self.rx(-2*t, np.arange(1, nqubits, 2))
 
         for qubits in int_qb_inds_second.reshape((len(int_qb_inds_second)//2, 2)):
             self.append(local_prop_instruction2, list(qubits))
 
         for qubits in int_qb_inds_first.reshape((len(int_qb_inds_first)//2, 2)):
             self.append(local_prop_instruction1, list(qubits))
+
+class TotalInteractionPropagatorDD(QuantumCircuit):
+    def __init__(self, chain_length, x_basis=False):
+        nqubits = 2*chain_length - 1
+        first_cnots_trgt_qubits = np.arange(0, nqubits-1, 2)
+        first_cnots_ctrl_qubits = np.arange(1, nqubits, 2)
+        second_cnots_trgt_qubits = np.arange(2, nqubits, 2)
+        t_lamb = Parameter("t_lamb")
+        t_g = Parameter("t_g")
+        super().__init__(nqubits)
+        if x_basis:
+            self.cx(first_cnots_trgt_qubits, first_cnots_ctrl_qubits)
+            self.cx(second_cnots_trgt_qubits, first_cnots_ctrl_qubits)
+            self.rx(-2*t_g, np.arange(0, nqubits, 2))
+            self.rz(-2*t_lamb, np.arange(1, nqubits, 2))
+            self.cx(second_cnots_trgt_qubits, first_cnots_ctrl_qubits)
+            self.cx(first_cnots_trgt_qubits, first_cnots_ctrl_qubits)
+        else:
+            self.cx(first_cnots_ctrl_qubits, first_cnots_trgt_qubits)
+            self.cx(first_cnots_ctrl_qubits, second_cnots_trgt_qubits)
+            self.rz(-2*t_g, np.arange(0, nqubits, 2))
+            self.rx(-2*t_lamb, np.arange(1, nqubits, 2))
+            self.cx(first_cnots_ctrl_qubits, second_cnots_trgt_qubits)
+            self.cx(first_cnots_ctrl_qubits, first_cnots_trgt_qubits)
 
 class TotalInteractionPropagatorOld(QuantumCircuit):
     def __init__(self, chain_length, x_basis=False):
@@ -120,16 +144,19 @@ def FirstOrderTrotter(chain_length, J, h, lamb, t_total, layers, sqrot_first=Fal
         layer.barrier()
     return layer.repeat(layers).decompose()
 
-def SecondOrderTrotter(chain_length, J, h, lamb, t_total, layers, x_basis=False, barriers=False):
+def SecondOrderTrotter(chain_length, J, h, lamb, t_total, layers, g=None, x_basis=False, barriers=False):
     t_layer = t_total/layers
     # total_interaction_propagator = TotalInteractionPropagator(chain_length, x_basis)
-    total_interaction_propagator = TotalInteractionPropagator(chain_length, x_basis).decompose()
-    total_interaction_propagator.assign_parameters([lamb*t_layer], inplace=True)
+    if g is None:
+        total_interaction_propagator = TotalInteractionPropagator(chain_length, x_basis).decompose()
+        total_interaction_propagator.assign_parameters([lamb*t_layer], inplace=True)
+    else:
+        total_interaction_propagator = TotalInteractionPropagatorDD(chain_length, x_basis)
+        total_interaction_propagator.assign_parameters([g*t_layer, lamb*t_layer], inplace=True)
     total_single_body_propagator = TotalSingleBodyPropagator(chain_length, x_basis)
     total_single_body_propagator.assign_parameters([h*t_layer/2, t_layer*J/2], inplace=True)
     layer = total_single_body_propagator.compose(total_interaction_propagator).compose(total_single_body_propagator)
     if barriers: layer.barrier()
-    # return layer.repeat(layers)
     return layer.repeat(layers).decompose()
 
 def SecondOrderTrotterOld(chain_length, J, h, lamb, t_total, layers, x_basis=False, barriers=False):
@@ -141,25 +168,24 @@ def SecondOrderTrotterOld(chain_length, J, h, lamb, t_total, layers, x_basis=Fal
     total_single_body_propagator.assign_parameters([h*t_layer/2, t_layer*J/2], inplace=True)
     layer = total_single_body_propagator.compose(total_interaction_propagator).compose(total_single_body_propagator)
     if barriers: layer.barrier()
-    # return layer.repeat(layers)
     return layer.repeat(layers).decompose()
 
-def particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_pair_left_position, particle_pair_length, final_time, layers, measure_every_layers=1, x_basis=False, barriers=False):
+def particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_pair_left_position, particle_pair_length, final_time, layers, g=None, measure_every_layers=1, x_basis=False, barriers=False):
     initial_state_preparation = particle_pair_initial_state(chain_length, particle_pair_left_position, particle_pair_length, x_basis=x_basis)
     circs_to_return = [initial_state_preparation]
     ncircuits_to_iterate = layers // measure_every_layers
     sqcancel_pm = PassManager([Optimize1qGatesDecomposition()])
     sqopt_pm = StagedPassManager(stages=["optimization"], optimization=sqcancel_pm)
     for i in range(1, ncircuits_to_iterate + 1):
-        this_trotter_circuit = SecondOrderTrotter(chain_length, J, h, lamb, final_time*i/ncircuits_to_iterate, i*measure_every_layers, x_basis=x_basis, barriers=barriers)
+        this_trotter_circuit = SecondOrderTrotter(chain_length, J, h, lamb, final_time*i/ncircuits_to_iterate, i*measure_every_layers, g=g, x_basis=x_basis, barriers=barriers)
         this_complete_circuit = initial_state_preparation.compose(this_trotter_circuit)
         this_complete_circuit = sqopt_pm.run(this_complete_circuit)
         circs_to_return.append(this_complete_circuit)
     return circs_to_return
 
-def physical_particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_pair_left_position, particle_pair_length, final_time, layers, backend, optimization_level, layout=None, measure_every_layers=1, x_basis=False, barriers=False):
+def physical_particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_pair_left_position, particle_pair_length, final_time, layers, backend, optimization_level, g=None, layout=None, measure_every_layers=1, x_basis=False, barriers=False):
     initial_state_preparation_circ = particle_pair_initial_state(chain_length, particle_pair_left_position, particle_pair_length, x_basis=x_basis)
-    logical_trotter_layer_circ = SecondOrderTrotter(chain_length, J, h, lamb, final_time/layers, 1, x_basis=x_basis, barriers=barriers)
+    logical_trotter_layer_circ = SecondOrderTrotter(chain_length, J, h, lamb, final_time/layers, 1, g=g, x_basis=x_basis, barriers=barriers)
     # display(logical_trotter_layer_circ.draw(output="mpl", idle_wires=False, fold=-1))
     layout = layout[:logical_trotter_layer_circ.num_qubits] if layout is not None else None
     pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=layout)
@@ -169,7 +195,6 @@ def physical_particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, 
     circs_to_return = [physical_state_preparation_circuit]
     niterations = layers // measure_every_layers
     for i in range(1, niterations + 1):
-        # this_circuit = physical_state_preparation_circuit.compose(physical_trotter_layer_circ.repeat(i*measure_every_layers))
         this_circuit = physical_state_preparation_circuit.compose(physical_trotter_layer_circ.repeat(i*measure_every_layers).decompose())
         this_circuit = remove_idle_qwires(this_circuit)
         if i == 1:
@@ -216,11 +241,11 @@ def get_erradj_number_of_trotter_layers(times, eplg_absolute, trotter_order, max
     times_matrix = np.repeat(times, max_layers).reshape(len(times), max_layers)
     layers_arr = np.arange(1, max_layers + 1)
     error_trotter = (times_matrix/layers_arr)**(trotter_order + 1)
-    error_hardware = 1 - (1-eplg_absolute)**layers_arr
+    error_hardware = 1 - (1-eplg_absolute)**(7*layers_arr)
     error_total = error_trotter + error_hardware
     return np.argmin(error_total, axis=1) + 1
 
-def erradj_particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_pair_left_position, particle_pair_length, final_time, steps, backend, optimization_level, eplg_absolute, layout=None, x_basis=False, barriers=False):
+def erradj_particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, particle_pair_left_position, particle_pair_length, final_time, steps, backend, optimization_level, eplg_absolute, g=None, layout=None, x_basis=False, barriers=False):
     layout = layout[:2*chain_length-1] if layout is not None else None
     t_arr = np.linspace(0, final_time, steps)
     nlayers_arr = get_erradj_number_of_trotter_layers(t_arr, eplg_absolute, trotter_order=2)
@@ -229,7 +254,7 @@ def erradj_particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, pa
     trotter_pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=layout)
     circs_to_return = []
     for i in range(steps-1):
-        this_trotter_layer_logical_circuit = SecondOrderTrotter(chain_length, J, h, lamb, t_perlayer_arr[i+1], 1, x_basis=x_basis, barriers=barriers)
+        this_trotter_layer_logical_circuit = SecondOrderTrotter(chain_length, J, h, lamb, t_perlayer_arr[i+1], 1, g=g, x_basis=x_basis, barriers=barriers)
         this_trotter_layer_physical_circuit = trotter_pm.run(this_trotter_layer_logical_circuit)
         final_index_layout = this_trotter_layer_physical_circuit.layout.final_index_layout()
         state_prep_pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=final_index_layout)
