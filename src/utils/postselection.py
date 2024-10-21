@@ -1,5 +1,7 @@
-from utils.circs import simplify_logical_circuits, count_non_idle_qubits
+from utils.circs import simplify_logical_circuits, count_non_idle_qubits, append_basis_change_circuit
 from qiskit.quantum_info import Pauli, PauliList
+from utils.hexec import execute_sampler_batch
+from qiskit_ibm_runtime import Batch
 from qiskit import QuantumCircuit
 from collections import Counter
 import sympy as sym
@@ -61,26 +63,35 @@ def operators_affecting_qb_range(first, last, operators, return_operator_range=F
 def diagonalization_susceptible_qb_range(observables, postselection_ops, return_operators=False):
     if type(observables) != list:
         observables = [observables]
-    operator_ranges = np.zeros((len(observables), 2))
+    operator_ranges = np.zeros((len(observables), 2), dtype=int)
     if return_operators: operators_affecting_obs_range = {}
     for i, observable in enumerate(observables):
         observable_str = str(Pauli(observable))
         first_obs_qb = len(observable_str)
         last_obs_qb = 0
-        for i, c in enumerate(observable_str):
+        for j, c in enumerate(observable_str):
             if c in ["X", "Y"]:
-                if i < first_obs_qb:
-                    first_obs_qb = i
-                elif i > last_obs_qb:
-                    last_obs_qb = i
-        operators_affecting_obs_range, operators_range = operators_affecting_qb_range(first_obs_qb, last_obs_qb, observable + postselection_ops, return_operator_range=True)
-        operator_ranges[i, :] = operators_range
+                if j < first_obs_qb:
+                    first_obs_qb = j
+                elif j > last_obs_qb:
+                    last_obs_qb = j
+        operators_affecting_obs_range, this_operator_range = operators_affecting_qb_range(first_obs_qb, last_obs_qb, observable + postselection_ops, return_operator_range=True)
+        operator_ranges[i, :] = this_operator_range
         if return_operators: operators_affecting_obs_range += set(operators_affecting_obs_range)
-    operators_range = (np.min(operator_ranges[:, 0]), np.max(operator_ranges[:, 1]))
+    operator_ranges = (np.min(operator_ranges[:, 0]), np.max(operator_ranges[:, 1]))
     if return_operators:
-        return operators_range, PauliList(operators_affecting_obs_range)
+        return operator_ranges, PauliList(operators_affecting_obs_range)
     else:
         return operator_ranges
+    
+def is_diagonal(pauli, basis="Z"):
+    if not ((type(pauli) != Pauli) or (type(pauli) != str)):
+        raise ValueError("This function only work for Pauli objects or strings")
+    pauli_str = str(pauli)
+    for c in pauli_str:
+        if c not in ["I", basis]:
+            return False
+    return True
 
 def binary_pauli_representation(commuting_pauli_set):
     Sz = commuting_pauli_set.z[:, ::-1].T
@@ -105,6 +116,46 @@ def mod2_gaussian_elimination(homogeneous_system_matrix):
             h += 1
             k += 1
     return solution % 2
+
+class Permutation:
+    def __init__(self, perm):
+        self.perm = np.array(perm)
+
+    def __mul__(self, other):
+        try:
+            if len(self.perm) != len(other.perm):
+                ValueError("Permutations must be the same size")
+        except AttributeError:
+            ValueError(f"{other} is not a permutation")
+
+        composed_perm = self.perm[other.perm[np.arange(len(self.perm))]]
+        return Permutation(composed_perm)
+
+    @classmethod
+    def transposition(cls, n, i, j):
+        if (not (0 <= i < n)) or (not (0 <= j < n)):
+            raise ValueError(f"i, j must be in range [0, n)")
+        
+        perm = np.arange(n)
+        perm[[i, j]] = perm[[j, i]]
+        return cls(perm)
+    
+    @classmethod
+    def identity(cls, n):
+        return cls(np.arange(n))
+    
+    def __call__(self, i):
+        if not (0 <= i < len(self.perm)):
+            raise ValueError("i must be in range [0, n)")
+        return self.perm[i]
+
+    def __getitem__(self, i):
+        if not (0 <= i < len(self.perm)):
+            raise ValueError("i must be in range [0, n)")
+        return self.perm[i]
+    
+    def __repr__(self):
+        return f"Transposition({self.perm})"
 
 # INSTRUCTION ABSTRACTIONS
 
@@ -131,6 +182,18 @@ class H:
         to_exchange = np.array(list(self.qubits)) + S_qubits
         S[[to_exchange, self.qubits]] = S[[self.qubits, to_exchange]]
         return S
+    
+    def phases_computation(self, phases, S, return_Sp=False):
+        phases = phases.copy()
+        nqubits = S.shape[0] // 2
+        for qubit in self.qubits:
+            z_row = S[qubit, :]
+            x_row = S[nqubits+qubit, :]
+            phases = (phases + z_row*x_row) % 2
+        if return_Sp:
+            return phases, self.binary_representation_conjugation(S)
+        else:
+            return phases
 
 class P:
     def __init__(self, *qb):
@@ -149,6 +212,18 @@ class P:
         affected_rows = np.array(self.qubits)
         S[affected_rows] = (S[affected_rows] + S[affected_rows + S_qubits]) % 2
         return S
+    
+    def phases_computation(self, phases, S, return_Sp=False):
+        phases = phases.copy()
+        nqubits = S.shape[0] // 2
+        for qubit in self.qubits:
+            z_row = S[qubit, :]
+            x_row = S[nqubits+qubit, :]
+            phases = (phases + z_row*x_row) % 2
+        if return_Sp:
+            return phases, self.binary_representation_conjugation(S)
+        else:
+            return phases
 
 class CZ:
     def __init__(self, ctrlqbs, tgqbs):
@@ -206,6 +281,20 @@ class CZ:
         S[ctrls, :] = (S[ctrls, :] + S[trgt + S_qubits, :]) % 2
         S[trgt, :] = (S[trgt, :] + S[ctrls + S_qubits, :]) % 2
         return S
+    
+    def phases_computation(self, phases, S, return_Sp=False):
+        phases = phases.copy()
+        nqubits = S.shape[0] // 2
+        for ctrlqb, targetqb in self.pairs:
+            z_ctrl_row = S[ctrlqb, :]
+            z_trgt_row = S[targetqb, :]
+            x_ctrl_row = S[nqubits + ctrlqb, :]
+            x_trgt_row = S[nqubits + targetqb, :]
+            phases = (phases + x_ctrl_row*x_trgt_row*((z_ctrl_row + z_trgt_row) % 2)) % 2
+        if return_Sp:
+            return phases, self.binary_representation_conjugation(S)
+        else:
+            return phases
 
     def __repr__(self):
         indices = f"({", ".join([str(ctrlind) for ctrlind in self.ctrl])}), ({", ".join([str(trgtind) for trgtind in self.target])})"
@@ -267,7 +356,7 @@ class InstructionList:
 
     def __repr__(self):
         gates = ", ".join(str(instruction) for instruction in self.instructions)
-        return f"InstructionList<{self.nqubits}qb>[{gates}]"
+        return f"InstructionList<{self.nqubits}>[{gates}]"
     
     def __getitem__(self, i):
         return self.instructions[i]
@@ -277,15 +366,31 @@ class InstructionList:
             S = instruction.binary_representation_conjugation(S)
         return S
     
-    def to_qiskit_circuit(self):
-        qc = QuantumCircuit(self.nqubits)
+    def phases_computation(self, S, return_Sp=False):
+        phases = np.zeros(S.shape[1], dtype=int)
+        S = S.copy()
         for instruction in self.instructions:
+            phases, S = instruction.phases_computation(phases, S, return_Sp=True)
+        if return_Sp:
+            return phases, S
+        else:
+            return phases
+    
+    def to_qiskit_circuit(self, barriers_before_cz=True):
+        qc = QuantumCircuit(self.nqubits)
+        last_instruction_type = None
+        for instruction in self.instructions:
+            if last_instruction_type != CZ and type(instruction) == CZ:
+                qc.barrier()
             if type(instruction) == H:
                 qc.h(instruction.qubits)
+                last_instruction_type = H
             elif type(instruction) == P:
                 qc.s(instruction.qubits)
+                last_instruction_type = P
             else:
                 qc.cz(instruction.ctrl, instruction.target)
+                last_instruction_type = CZ
         return simplify_logical_circuits(qc)
     
 # UNITARY SYNTHESIS
@@ -312,14 +417,19 @@ def first_reduction_step(S):
     S_rank = np.linalg.matrix_rank(S_gauss)
     Sx_rank = np.linalg.matrix_rank(S_gauss[nrows:])
     C_diag = np.diagonal(S_gauss[:S_rank-Sx_rank, :S_rank-Sx_rank])
-    zero_diag_elements = np.where(np.equal(C_diag, 0))[0]
-    row_swaps = {}
-    for zero_diag_el_ind in zero_diag_elements:
-        non_zero_diag_col = S[:, zero_diag_el_ind]
-        first_one_row_ind = np.where(np.equal(non_zero_diag_col, 1))[0][0]
-        row_swaps[zero_diag_el_ind] = first_one_row_ind
+    # zero_diag_elements = np.where(np.equal(C_diag, 0))[0]
+    row_swaps = Permutation.identity(nrows)
+    for i in range(len(C_diag)):
+        if C_diag[i] == 0:
+            zero_diag_col = S[:, i]
+            first_one_row_ind = np.where(np.equal(zero_diag_col, 1))[0][0]
+            row_swaps = row_swaps * Permutation.transposition(nrows, i, first_one_row_ind)
+            S_gauss[[i, first_one_row_ind]] = S[[first_one_row_ind, i]]
+    hadamard_qubits = []
+    for i, row in enumerate(S_gauss[nrows:, :]):
+        if row[::-1][min(i, ncols - 1)] != 1:
+            hadamard_qubits.append(row_swaps(i))
     instructions = InstructionList(nrows)
-    hadamard_qubits = [row_swaps.get(i, i) for i in np.arange(nrows - Sx_rank)]
     instructions.add(H(*hadamard_qubits))
     S1 = instructions.binary_representation_conjugation(S)
     return S1, instructions
@@ -427,43 +537,182 @@ def reduce_binary_string_representation(pauli_representation):
     S4, R3_inv, instructions = fourth_reduction_step(S3, S2, instructions)
     S5, instructions = fifth_reduction_step(S4, instructions)
     R_inv = (R3_inv @ R2_inv @ R1_inv @ R0_inv) % 2
-    return S5, R_inv, instructions
+    phases = instructions.phases_computation(pauli_representation)
+    return S5, instructions, R_inv, phases
 
 def paulis_diagonalization_circuit(commuting_pauli_list):
     # Quantum 5, 385 (2021)
-    postselection_ops = PauliList([Pauli(postselection_op) for postselection_op in postselection_ops])
-    observables = PauliList([Pauli(observable) for observable in observables])
-    all_commute = check_postselection_observable_commutation(observables, postselection_ops)
+    all_commute = len(commuting_pauli_list.commutes_with_all(commuting_pauli_list)) == len(commuting_pauli_list)
     if not all_commute:
-        raise ValueError("All observables and postselection operators must commute")
-    nqubits = len(postselection_ops[0])
-    non_diagonal_qubits_num = count_non_diagonal_qubits(commuting_set)
+        raise ValueError("The provided PauliList contains non-commuting operators")
+    nqubits = len(commuting_pauli_list[0])
+    non_diagonal_qubits_num = count_non_diagonal_qubits(commuting_pauli_list)
     if non_diagonal_qubits_num == 0:
         return QuantumCircuit(nqubits)
-    Sp = binary_pauli_representation(commuting_set)
-    redS, R_inv, instructions = reduce_binary_string_representation(Sp)
-    return instructions.to_qiskit_circuit(), R_inv
-
-def physical_diagonalization_circuit(backend, observable, postselection_ops):
-    # affected_qubits = 
-    pass
+    Sp = binary_pauli_representation(commuting_pauli_list)
+    redS, instructions, R_inv, phases = reduce_binary_string_representation(Sp)
+    return instructions.to_qiskit_circuit(), R_inv, phases
 
 # -----------------------------------------
 #     CIRCUIT EXECUTION AND MEASUREMENT
 # -----------------------------------------
 
-def append_diagonalization_circuit():
-    pass
+def diagonal_operators_check(operators):
+    different_paulis = set("".join([str(op) for op in operators]))
+    if len(remaining_ops := (different_paulis - {"I"})) > 1:
+        return False
+    basis = remaining_ops.pop()
+    all_diagonal = all([is_diagonal(op, basis=basis) for op in operators])
+    return all_diagonal, basis
 
-def execute_postselected_sampler_batch(backend, sampler_opt_dict, transpiled_circuits, postselcts_generating_func, observable_generating_func, shots_per_observable, job_db=None):
+def initialize_postselection(nqubits, postselects_generating_func, observable_generating_funcs):
     if type(observable_generating_funcs) != list:
         observable_generating_funcs = [observable_generating_funcs]
 
-    nqubits = np.max([count_non_idle_qubits(circ) for circ in transpiled_circuits])
-    postselection_ops = PauliList(postselcts_generating_func)
-    logical_observables = PauliList([Pauli(observable) for observable in observable_generating_func])
-
+    postselection_ops = PauliList(set(postselects_generating_func(nqubits)))
+    post_selection_diagonal, basis = diagonal_operators_check(postselection_ops)
+    if not post_selection_diagonal:
+        raise NotImplementedError("Only supports diagonal postselection operators in some basis")
+    logical_observables = PauliList([Pauli(observable_func(nqubits)) for observable_func in observable_generating_funcs])
     all_commute = check_postselection_observable_commutation(logical_observables, postselection_ops)
     if not all_commute:
         raise ValueError("All observables and postselection operators must commute")
+    diagonal_observables = []
+    non_diagonal_observables = []
+    for observable in logical_observables:
+        if is_diagonal(observable, basis=basis):
+            diagonal_observables.append(observable)
+        else:
+            non_diagonal_observables.append(observable)
+    return postselection_ops, diagonal_observables, non_diagonal_observables, basis
 
+def execute_postselected_sampler_batch(backend, sampler_opt_dict, transpiled_circuits, postselects_generating_func, observable_generating_funcs, extra_options=None, job_db=None):
+    # TODO: This only works for our particular case
+    nqubits = np.max([count_non_idle_qubits(circ) for circ in transpiled_circuits])
+    postselection_ops, diagonal_observables, non_diagonal_observables, basis = initialize_postselection(nqubits, postselects_generating_func, observable_generating_funcs)
+    if basis != "Z":
+        basis_changed_circuits = [append_basis_change_circuit(circ, basis, backend) for circ in transpiled_circuits]
+    else:
+        basis_changed_circuits = transpiled_circuits
+    jobs = []
+    # First send diagonal jobs
+    jobs.append(execute_sampler_batch(backend, sampler_opt_dict, basis_changed_circuits))
+    # Diagonalize each non-diagonal observable and send a batch of jobs to avoid long circuits
+    for observable in non_diagonal_observables:
+        raise NotImplementedError("Only supports diagonal observables")
+        diag_range = diagonalization_susceptible_qb_range([observable], postselection_ops)
+        reduced_ops_to_diag = PauliList([op[diag_range[0]:diag_range[1]+1] for op in postselection_ops + PauliList([observable])])
+        this_diag_circ, this_R_inv, this_phases = paulis_diagonalization_circuit(reduced_ops_to_diag)
+            
+    if job_db is not None:
+        job_ids = [job.job_id() for job in jobs]
+        postselection_strings = [str(op) for op in postselection_ops]
+        observables_string = [str(op) for op in set(diagonal_observables + non_diagonal_observables)]
+        post_obs_info_dict = {"postselection_ops": postselection_strings, "observables": observables_string}
+        extra_options = {} if extra_options is None else extra_options
+        options = extra_options | post_obs_info_dict | sampler_opt_dict
+        job_db.add(options, transpiled_circuits, "Sampler", job_ids)
+    
+    return jobs
+
+def is_valid_state_string(string, postselection_ops):
+    nqubits = len(postselection_ops[0])
+    for operator in postselection_ops:
+        if len(operator) != nqubits:
+            raise ValueError("All operators must act on the same number of qubits")
+    if len(string) != nqubits:
+        raise ValueError("The state string and all postselection operators must have the same number of qubits")
+    all_diagonal, basis = diagonal_operators_check(postselection_ops)
+    if not all_diagonal:
+        raise ValueError("Only supports diagonal postselection operators in some basis")
+    postselection_mask = np.array([[int(str(opel) == basis) for opel in operator[::-1]] for operator in postselection_ops])
+    string_arr = np.array([int(c) for c in string])
+    string_rep_arr = np.repeat(np.array([string_arr]), len(postselection_ops), axis=0)
+    each_postselection_valid = ~(np.sum(string_rep_arr*postselection_mask, axis=1) % 2).astype(bool)
+    return np.all(each_postselection_valid)
+
+def get_postselected_samples_dict(samples_dict, postselection_ops):
+    return {state_string:counts for state_string, counts in samples_dict.items() if is_valid_state_string(state_string, postselection_ops)}
+
+def measure_diagonal_observables(samples_dict, diagonal_observables):
+    nqubits = len(diagonal_observables[0])
+    for observable in diagonal_observables:
+        if len(observable) != nqubits:
+            raise ValueError("All observables must act on the same number of qubits")
+    for state_string in samples_dict.keys():
+        if len(state_string) != nqubits:
+            raise ValueError("The state strings and all observables must act on the same number of qubits")
+    all_diagonal, basis = diagonal_operators_check(diagonal_observables)
+    if not all_diagonal:
+        raise ValueError("The provided observables are not diagonal in the same basis")
+    strings_expectation_values = np.zeros((len(samples_dict), len(diagonal_observables)))
+    observables_mask = np.array([[int(str(opel) == basis) for opel in observable] for observable in diagonal_observables])
+    for i, state_string in enumerate(samples_dict.keys()):
+        state_string_rep = np.repeat(np.array([[int(c) for c in state_string]]), [len(diagonal_observables)], axis=0)
+        observables_expectation_value = (-1)**(np.sum(state_string_rep*observables_mask, axis=1) % 2)
+        strings_expectation_values[i] = observables_expectation_value
+    weights = np.array(list(samples_dict.values()))/np.sum(list(samples_dict.values()))
+    strings_expectation_times_weights = strings_expectation_values * weights.reshape((len(samples_dict), 1))
+    expectation_values = np.sum(strings_expectation_times_weights, axis=0)
+    return expectation_values
+
+def simulate_postselected_operators(fake_backend, sampler_opt_dict, transpiled_circuits, postselect_generating_func, observable_generating_funcs, return_samples_dicts=False, return_postselected_samples_dicts=False):
+    nqubits = np.max([count_non_idle_qubits(circ) for circ in transpiled_circuits])
+    postselection_ops, diagonal_observables, non_diagonal_observables, basis = initialize_postselection(nqubits, postselect_generating_func, observable_generating_funcs)
+    if basis != "Z":
+        basis_changed_circuits = [append_basis_change_circuit(circ, basis, fake_backend) for circ in transpiled_circuits]
+    else:
+        basis_changed_circuits = transpiled_circuits
+    jobs = execute_sampler_batch(fake_backend, sampler_opt_dict, basis_changed_circuits)
+    site_gauge_observable_matrix = np.zeros((len(basis_changed_circuits), len(diagonal_observables + non_diagonal_observables)))
+    if return_samples_dicts: samples_dicts = []
+    if return_postselected_samples_dicts: postselected_samples_dicts = []
+    # Measure diagonal postselected operators
+    diagonal_jobs = jobs[:len(basis_changed_circuits)]
+    for i, djob in enumerate(diagonal_jobs):
+        samples_dict = list(djob.result()[0].data.values())[0].get_counts()
+        if return_samples_dicts: samples_dicts.append(samples_dict)
+        postselected_samples_dict = get_postselected_samples_dict(samples_dict, postselection_ops)
+        if return_postselected_samples_dicts: postselected_samples_dicts.append(postselected_samples_dict)
+        expectation_values = measure_diagonal_observables(postselected_samples_dict, diagonal_observables)
+        site_gauge_observable_matrix[i, :len(diagonal_observables)] = expectation_values
+    # Measure non-diagonal observables
+    for observable in non_diagonal_observables:
+        raise NotImplementedError("Non-diagonal observables not yet supported")
+    to_return = [site_gauge_observable_matrix]
+    if return_samples_dicts:
+        to_return.append(samples_dicts)
+    if return_postselected_samples_dicts:
+        to_return.append(postselected_samples_dicts)
+    return to_return if len(to_return) > 1 else to_return[0]
+
+def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_circuits, postselect_generating_func, observable_generating_funcs, extra_options=None, job_index=0, return_samples_dicts=False, return_postselected_samples_dicts=False):
+    nqubits = np.max([count_non_idle_qubits(circ) for circ in transpiled_circuits])
+    postselection_ops, diagonal_observables, non_diagonal_observables, basis = initialize_postselection(nqubits, postselect_generating_func, observable_generating_funcs)
+    postselection_strings = [str(op) for op in postselection_ops]
+    observables_string = [str(op) for op in diagonal_observables + non_diagonal_observables]
+    post_obs_info_dict = {"postselection_ops": postselection_strings, "observables": observables_string}
+    extra_options = {} if extra_options is None else extra_options
+    options = extra_options | post_obs_info_dict | sampler_opt_dict
+    jobs = job_db.search_by_params(options, transpiled_circuits, "Sampler", strict_depth=False, limit=job_index+1, ibmq_service=ibmq_service)[job_index]
+    site_gauge_observable_matrix = np.zeros((len(transpiled_circuits), len(diagonal_observables + non_diagonal_observables)))
+    if return_samples_dicts: samples_dicts = []
+    if return_postselected_samples_dicts: postselected_samples_dicts = []
+    # Measure diagonal postselected operators
+    diagonal_jobs = jobs[:len(transpiled_circuits)]
+    for i, djob in enumerate(diagonal_jobs):
+        samples_dict = list(djob.result()[0].data.values())[0].get_counts()
+        if return_samples_dicts: samples_dicts.append(samples_dict)
+        postselected_samples_dict = get_postselected_samples_dict(samples_dict, postselection_ops)
+        if return_postselected_samples_dicts: postselected_samples_dicts.append(postselected_samples_dict)
+        expectation_values = measure_diagonal_observables(postselected_samples_dict, diagonal_observables)
+        site_gauge_observable_matrix[i, :len(diagonal_observables)] = expectation_values
+    # Measure non-diagonal observables
+    for observable in non_diagonal_observables:
+        raise NotImplementedError("Non-diagonal observables not yet supported")
+    to_return = [site_gauge_observable_matrix]
+    if return_samples_dicts:
+        to_return.append(samples_dicts)
+    if return_postselected_samples_dicts:
+        to_return.append(postselected_samples_dicts)
+    return to_return if len(to_return) > 1 else to_return[0]

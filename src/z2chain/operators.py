@@ -29,3 +29,11 @@ def gauge_operator(chain_length, site_ind, x_basis=False):
     else:
         paulistr = "I"*(2*site_ind - 1) + base_str + "I"*(2*(chain_length - site_ind - 1) - 1)
     return Pauli(paulistr)
+
+def postselection_operators(chain_length, x_basis=False):
+    nqubits = 2*chain_length - 1
+    basis_string = "X" if x_basis else "Z"
+    postselection_ops = [Pauli("I"*(2*i - 1) + basis_string*3 + "I"*(2*(chain_length - i - 1) - 1)) for i in range(1, chain_length-1)]
+    postselection_ops.insert(0, Pauli(basis_string*2 + "I"*(nqubits - 2)))
+    postselection_ops.append(Pauli("I"*(nqubits - 2) + basis_string*2))
+    return PauliList(postselection_ops)

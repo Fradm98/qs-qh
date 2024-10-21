@@ -241,7 +241,7 @@ def get_erradj_number_of_trotter_layers(times, eplg_absolute, trotter_order, max
     times_matrix = np.repeat(times, max_layers).reshape(len(times), max_layers)
     layers_arr = np.arange(1, max_layers + 1)
     error_trotter = (times_matrix/layers_arr)**(trotter_order + 1)
-    error_hardware = 1 - (1-eplg_absolute)**(7*layers_arr)
+    error_hardware = 1 - (1-eplg_absolute)**(4*layers_arr)
     error_total = error_trotter + error_hardware
     return np.argmin(error_total, axis=1) + 1
 
@@ -260,14 +260,17 @@ def erradj_particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, pa
         state_prep_pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=final_index_layout)
         state_preparation_physical_circuit = state_prep_pm.run(state_preparation_logical_circ)
         this_time_physical_circuit = state_preparation_physical_circuit.compose(this_trotter_layer_physical_circuit.repeat(nlayers_arr[i+1])).decompose()
-        this_time_physical_circuit = remove_idle_qwires(this_time_physical_circuit)
-        qubit_ind_map = {i:final_index_layout[pqb] for i, pqb in enumerate(np.argsort(final_index_layout))}
-        layout_dict = {qubit_ind_map[i]:this_time_physical_circuit.qubits[i] for i in range(this_time_physical_circuit.num_qubits)}
+        this_time_physical_circuit = remove_idle_qwires(this_time_physical_circuit, relabeling=np.arange(len(final_index_layout))[np.argsort(final_index_layout)])
+        layout_dict = {final_index_layout[i]:this_time_physical_circuit.qubits[i] for i in range(this_time_physical_circuit.num_qubits)}
         layout_pm = PassManager([SetLayout(layout=Layout(layout_dict)), FullAncillaAllocation(coupling_map=backend.target), ApplyLayout()])
         sqcancel_pm = PassManager([Optimize1qGates(target=backend.target), Optimize1qGatesDecomposition(target=backend.target), Optimize1qGatesSimpleCommutation(target=backend.target)])
         sqopt_pm = StagedPassManager(stages=["optimization", "layout"], layout=layout_pm, optimization=sqcancel_pm)
         this_time_physical_circuit = sqopt_pm.run(this_time_physical_circuit)
         if i == 0:
+            measured_state_preparation_circuit = QuantumCircuit(2*chain_length-1, 2*chain_length-1)
+            measured_state_preparation_circuit = measured_state_preparation_circuit.compose(state_preparation_logical_circ)
+            measured_state_preparation_circuit.measure(np.arange(2*chain_length-1), np.arange(2*chain_length-1))
+            state_preparation_physical_circuit = state_prep_pm.run(measured_state_preparation_circuit)
             circs_to_return.append(state_preparation_physical_circuit)
         circs_to_return.append(this_time_physical_circuit)
     return circs_to_return

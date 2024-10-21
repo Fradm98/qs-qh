@@ -88,8 +88,8 @@ class ExecDB:
         self._data.pop(index)
         self.save()
 
-    def execute_estimator_batch(self, backend, estimator_opt_dict, physical_circuits, observable_generating_func, observable_name=None):
-        execute_estimator_batch(backend, estimator_opt_dict, physical_circuits, observable_generating_func, self, observable_name)
+    def execute_estimator_batch(self, backend, estimator_opt_dict, physical_circuits, observable_generating_func, extra_options=None, observable_name=None):
+        execute_estimator_batch(backend, estimator_opt_dict, physical_circuits, observable_generating_func, extra_options, self, observable_name)
 
     def execute_sampler_batch(self, backend, sampler_opt_dict, physical_circuits):
         execute_sampler_batch(backend, sampler_opt_dict, physical_circuits, self)
@@ -173,8 +173,8 @@ def execute_sampler_batch(backend, sampler_opt_dict, transpiled_circuits, job_db
     with Batch(backend=backend) as batch:
         sampler = SamplerV2(mode=batch, options=sampler_opt_dict)
         for circ in transpiled_circuits:
-            circ = check_and_measure_active_qubits(circ)
-            job_objs.append(sampler.run([circ]))
+            this_circ = check_and_measure_active_qubits(circ)
+            job_objs.append(sampler.run([this_circ]))
 
     if job_db is not None:
         job_ids = [job.job_id() for job in job_objs]

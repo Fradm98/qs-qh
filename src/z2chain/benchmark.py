@@ -10,7 +10,7 @@ import json
 import os
 
 def get_z2_chain_benchmark_circuit(chain_length, J, h, lamb, t_compute, layers, x_basis=False):
-    compute_circuit = particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, chain_length//2 - 1, 1, t_compute, layers, layers, x_basis, False)[1]
+    compute_circuit = particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, chain_length//2 - 1, 1, t_compute, layers, None, layers, x_basis, False)[1]
     benchmark_circuit = compute_uncompute(compute_circuit, barrier=True)
     return benchmark_circuit
 
