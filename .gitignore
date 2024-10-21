@@ -13,3 +13,8 @@ src/cobos/__pycache__/
 *.json
 *.err
 *.log
+*.aux
+*.fdb_latexmk
+*.fls
+*.out
+.synctex.gz
