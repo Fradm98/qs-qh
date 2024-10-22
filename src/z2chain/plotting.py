@@ -134,7 +134,7 @@ def plot_n_discarded_samples(samples_dicts, postselected_samples_dicts, x_arr=No
     if regression:
         reg_func = lambda x, a, b: b*np.exp(-a*x)
         popt, pcov = sp.optimize.curve_fit(reg_func, x_arr, ratio_arr, p0=[1, 1])
-        plt.plot(x_arr, reg_func(x_arr, *popt), "--", linewidth=2, color="darkslateblue", label="$b e^{-ax} + c$\n"+f"$a={popt[0]:.03f}$\n"+f"$b = {popt[1]:0.2f}$")
+        plt.plot(x_arr, reg_func(x_arr, *popt), "--", linewidth=2, color="darkslateblue", label="$b e^{-ax}$\n"+f"$a={popt[0]:.03f}$\n"+f"$b = {popt[1]:0.2f}$")
     plt.plot(x_arr, ratio_arr, "x", markersize=10, markeredgewidth=2, color="darkorange")
     plt.grid(color="gray", linestyle="dashdot", linewidth=1.6)
     plt.ylabel(r"$n_{\mathrm{post}}/n_{\mathrm{total}}$", labelpad=10)
