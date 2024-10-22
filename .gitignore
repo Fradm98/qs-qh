@@ -17,4 +17,8 @@ src/cobos/__pycache__/
 *.fdb_latexmk
 *.fls
 *.out
-.synctex.gz
+*.synctex.gz
+*.bbl
+*.blg
+*.run.xml
+*.bib
