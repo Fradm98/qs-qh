@@ -3,9 +3,9 @@ from qiskit.converters import circuit_to_instruction, dag_to_circuit, circuit_to
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit.transpiler import PassManager, StagedPassManager, Layout
 from qiskit.dagcircuit import DAGCircuit
-from qiskit import QuantumCircuit
-import qiskit.qasm3 as qasm3
+from qiskit import QuantumCircuit, qpy
 import numpy as np
+import os
 
 def count_non_idle_qubits(circ):
     if type(circ) is not DAGCircuit:
@@ -106,3 +106,20 @@ def append_basis_change_circuit(circuit, basis, backend=None):
 
 def depth2qb(circ):
     return circ.depth(lambda x: len(x.qubits)>1)
+
+def load_circs(filepath):
+    with open(filepath, "rb") as f:
+        circs = qpy.load(f)
+    return circs
+
+def save_circs(filepath, circs):
+    with open(filepath, "wb") as f:
+        qpy.dump(circs, f)
+
+def generate_and_save_circs(filepath, circs_function, *circs_func_args):
+    if os.path.exists(filepath):
+        circs = load_circs(filepath)
+    else:
+        circs = circs_function(*circs_func_args)
+        save_circs(filepath, circs)
+    return circs
