@@ -362,7 +362,7 @@ def check_benchmark_status_mac(stdout_path=None, password=None):
             print("LOGS:")
             with open(stdout_path, "r") as f:
                 lines = f.readlines()
-                last_ten_lines = lines[len(lines)-11::-1]
+                last_ten_lines = lines[len(lines)-11::]
                 print("\n".join(last_ten_lines))
     else:
         print("The benchmark is NOT running")
