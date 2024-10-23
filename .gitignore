@@ -22,3 +22,4 @@ src/cobos/__pycache__/
 *.blg
 *.run.xml
 *.bib
+*.qpy
