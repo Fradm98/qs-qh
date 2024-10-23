@@ -1,17 +1,39 @@
-from utils.circs import simplify_logical_circuits, count_non_idle_qubits, append_basis_change_circuit
+from utils.circs import simplify_logical_circuits, count_non_idle_qubits, append_basis_change_circuit, join_transpiled_circuits
+from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
+from qiskit_ibm_runtime import RuntimeDecoder, RuntimeEncoder
 from qiskit.quantum_info import Pauli, PauliList
 from utils.hexec import execute_sampler_batch
-from qiskit_ibm_runtime import Batch
 from qiskit import QuantumCircuit
 from collections import Counter
 import sympy as sym
 import numpy as np
+import json
+import os
 
 # -----------------------------------------
 #           BASIS CHANGE CIRCUITS
 # -----------------------------------------
 
 # AUXILIARY FUNCTIONS
+
+def pauli_to_str(pauli):
+    if type(pauli) == Pauli:
+        return "".join([str(opel) for opel in pauli])
+    elif type(pauli) == str:
+        return pauli
+    else:
+        raise ValueError("pauli argument is not a Pauli object")
+
+def load_job_result(filepath):
+    with open(filepath, "r") as f:
+        result = json.load(f, cls=RuntimeDecoder)
+    return result
+
+def save_job_result(filepath, job):
+    result = job.result()
+    with open(filepath, "w") as f:
+        json.dump(result, f, cls=RuntimeEncoder)
+    return result
 
 def check_postselection_observable_commutation(observables, postselection_ops):
     postselection_ops = PauliList([Pauli(postselection_op) for postselection_op in postselection_ops])
@@ -30,7 +52,7 @@ def check_postselection_observable_commutation(observables, postselection_ops):
 def count_non_diagonal_qubits(commuting_pauli_set):
     max_non_diagonal_qubits = 0
     for pauli in commuting_pauli_set:
-        ndiagonal = str(pauli).count("I") + str(pauli).count("Z")
+        ndiagonal = pauli_to_str(pauli).count("I") + pauli_to_str(pauli).count("Z")
         this_non_diagonal_qubits = len(pauli) - ndiagonal
         if this_non_diagonal_qubits > max_non_diagonal_qubits:
             max_non_diagonal_qubits = this_non_diagonal_qubits
@@ -42,7 +64,7 @@ def operators_affecting_qb_range(first, last, operators, return_operator_range=F
     first_affected_qb = last
     last_affected_qb = first
     for op in operators:
-        op_str = str(op)
+        op_str = pauli_to_str(op)
         sub_op_string = op_str[first:last+1]
         present_paulis = set(sub_op_string)
         if len(present_paulis - {"I"}) > 0:
@@ -66,7 +88,7 @@ def diagonalization_susceptible_qb_range(observables, postselection_ops, return_
     operator_ranges = np.zeros((len(observables), 2), dtype=int)
     if return_operators: operators_affecting_obs_range = {}
     for i, observable in enumerate(observables):
-        observable_str = str(Pauli(observable))
+        observable_str = pauli_to_str(Pauli(observable))
         first_obs_qb = len(observable_str)
         last_obs_qb = 0
         for j, c in enumerate(observable_str):
@@ -87,7 +109,7 @@ def diagonalization_susceptible_qb_range(observables, postselection_ops, return_
 def is_diagonal(pauli, basis="Z"):
     if not ((type(pauli) != Pauli) or (type(pauli) != str)):
         raise ValueError("This function only work for Pauli objects or strings")
-    pauli_str = str(pauli)
+    pauli_str = pauli_to_str(pauli)
     for c in pauli_str:
         if c not in ["I", basis]:
             return False
@@ -558,7 +580,7 @@ def paulis_diagonalization_circuit(commuting_pauli_list):
 # -----------------------------------------
 
 def diagonal_operators_check(operators):
-    different_paulis = set("".join([str(op) for op in operators]))
+    different_paulis = set("".join([pauli_to_str(op) for op in operators]))
     if len(remaining_ops := (different_paulis - {"I"})) > 1:
         return False
     basis = remaining_ops.pop()
@@ -606,13 +628,34 @@ def execute_postselected_sampler_batch(backend, sampler_opt_dict, transpiled_cir
             
     if job_db is not None:
         job_ids = [job.job_id() for job in jobs]
-        postselection_strings = [str(op) for op in postselection_ops]
-        observables_string = [str(op) for op in set(diagonal_observables + non_diagonal_observables)]
+        postselection_strings = sorted([pauli_to_str(op) for op in postselection_ops])
+        observables_string = sorted([pauli_to_str(op) for op in set(diagonal_observables + non_diagonal_observables)])
         post_obs_info_dict = {"postselection_ops": postselection_strings, "observables": observables_string}
         extra_options = {} if extra_options is None else extra_options
         options = extra_options | post_obs_info_dict | sampler_opt_dict
         job_db.add(options, transpiled_circuits, "Sampler", job_ids)
+    else:
+        print("WARNING: Submitting jobs without job_db")
     
+    return jobs
+
+def db_add_postselected_sampler_ran_batch(job_db, service, session_id, backend, sampler_opt_dict, transpiled_circuits, postselects_generating_func, observable_generating_funcs, extra_options=None):
+    nqubits = np.max([count_non_idle_qubits(circ) for circ in transpiled_circuits])
+    postselection_ops, diagonal_observables, non_diagonal_observables, basis = initialize_postselection(nqubits, postselects_generating_func, observable_generating_funcs)
+    if basis != "Z":
+        basis_changed_circuits = [append_basis_change_circuit(circ, basis, backend) for circ in transpiled_circuits]
+    else:
+        basis_changed_circuits = transpiled_circuits
+    
+    jobs = service.jobs(session_id=session_id, limit=len(transpiled_circuits)*(len(non_diagonal_observables)+1))[::-1]
+    job_ids = [job.job_id() for job in jobs]
+    postselection_strings = sorted([pauli_to_str(op) for op in postselection_ops])
+    observables_string = sorted([pauli_to_str(op) for op in set(diagonal_observables + non_diagonal_observables)])
+    post_obs_info_dict = {"postselection_ops": postselection_strings, "observables": observables_string}
+    extra_options = {} if extra_options is None else extra_options
+    options = extra_options | post_obs_info_dict | sampler_opt_dict
+    job_db.add(options, transpiled_circuits, "Sampler", job_ids)
+
     return jobs
 
 def is_valid_state_string(string, postselection_ops):
@@ -659,12 +702,38 @@ def measure_diagonal_observables(samples_dict, diagonal_observables):
 def simulate_postselected_operators(fake_backend, sampler_opt_dict, transpiled_circuits, postselect_generating_func, observable_generating_funcs, return_samples_dicts=False, return_postselected_samples_dicts=False):
     nqubits = np.max([count_non_idle_qubits(circ) for circ in transpiled_circuits])
     postselection_ops, diagonal_observables, non_diagonal_observables, basis = initialize_postselection(nqubits, postselect_generating_func, observable_generating_funcs)
+    # Express diagonal observables in the computational basis
     if basis != "Z":
         basis_changed_circuits = [append_basis_change_circuit(circ, basis, fake_backend) for circ in transpiled_circuits]
     else:
         basis_changed_circuits = transpiled_circuits
-    jobs = execute_sampler_batch(fake_backend, sampler_opt_dict, basis_changed_circuits)
     site_gauge_observable_matrix = np.zeros((len(basis_changed_circuits), len(diagonal_observables + non_diagonal_observables)))
+    # Execute diagonal circuits
+    jobs = execute_sampler_batch(fake_backend, sampler_opt_dict, basis_changed_circuits)
+    # Execute non diagonal circuits
+    non_diagonal_obs_R_invs = []
+    non_diagonal_obs_phases = []
+    affected_postselection_operators = np.zeros((len(non_diagonal_observables), len(postselection_ops)), dtype=bool)
+    for i, observable in enumerate(non_diagonal_observables):
+        diag_range = diagonalization_susceptible_qb_range([observable], postselection_ops)
+        reduced_pops_to_diag = []
+        for j, op in enumerate(postselection_ops):
+            this_reduced_op = op[diag_range[0]:diag_range[1]+1]
+            if len(this_reduced_op) != pauli_to_str(this_reduced_op).count("I"):
+                reduced_pops_to_diag.append(this_reduced_op)
+                affected_postselection_operators[i, j] = True
+        reduced_ops_to_diag = PauliList(reduced_pops_to_diag + [observable])
+        this_diag_circ, this_R_inv, this_phases = paulis_diagonalization_circuit(reduced_ops_to_diag)
+        this_obs_circs = []
+        for circ in transpiled_circuits:
+            this_circ_layout = circ.layout.final_index_layout()[diag_range[0]:diag_range[1]+1]
+            pm = generate_preset_pass_manager(backend=fake_backend, optimization_level=2, initial_layout=this_circ_layout)
+            transpiled_diag_circ = pm.run(this_diag_circ)
+            this_obs_circs.append(join_transpiled_circuits(circ, transpiled_diag_circ, backend=fake_backend))
+        non_diagonal_obs_R_invs.append(this_R_inv)
+        non_diagonal_obs_phases.append(this_phases)
+        this_obs_jobs = execute_sampler_batch(fake_backend, sampler_opt_dict, this_obs_circs)
+        jobs = jobs + this_obs_jobs
     if return_samples_dicts: samples_dicts = []
     if return_postselected_samples_dicts: postselected_samples_dicts = []
     # Measure diagonal postselected operators
@@ -677,8 +746,9 @@ def simulate_postselected_operators(fake_backend, sampler_opt_dict, transpiled_c
         expectation_values = measure_diagonal_observables(postselected_samples_dict, diagonal_observables)
         site_gauge_observable_matrix[i, :len(diagonal_observables)] = expectation_values
     # Measure non-diagonal observables
-    for observable in non_diagonal_observables:
-        raise NotImplementedError("Non-diagonal observables not yet supported")
+    for i, observable in enumerate(non_diagonal_observables):
+        this_observable_jobs = jobs[(i+1)*len(basis_changed_circuits):(i+2)*len(basis_changed_circuits)]
+        this_postselection_operators = None
     to_return = [site_gauge_observable_matrix]
     if return_samples_dicts:
         to_return.append(samples_dicts)
@@ -686,22 +756,38 @@ def simulate_postselected_operators(fake_backend, sampler_opt_dict, transpiled_c
         to_return.append(postselected_samples_dicts)
     return to_return if len(to_return) > 1 else to_return[0]
 
-def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_circuits, postselect_generating_func, observable_generating_funcs, extra_options=None, job_index=0, return_samples_dicts=False, return_postselected_samples_dicts=False):
+def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_circuits, postselect_generating_func, observable_generating_funcs, extra_options=None, job_index=0, jobs_result_folder="", return_samples_dicts=False, return_postselected_samples_dicts=False):
     nqubits = np.max([count_non_idle_qubits(circ) for circ in transpiled_circuits])
     postselection_ops, diagonal_observables, non_diagonal_observables, basis = initialize_postselection(nqubits, postselect_generating_func, observable_generating_funcs)
-    postselection_strings = [str(op) for op in postselection_ops]
-    observables_string = [str(op) for op in diagonal_observables + non_diagonal_observables]
+    postselection_strings = sorted([pauli_to_str(op) for op in postselection_ops])
+    observables_string = sorted([pauli_to_str(op) for op in PauliList(set(diagonal_observables + non_diagonal_observables))])
     post_obs_info_dict = {"postselection_ops": postselection_strings, "observables": observables_string}
     extra_options = {} if extra_options is None else extra_options
     options = extra_options | post_obs_info_dict | sampler_opt_dict
-    jobs = job_db.search_by_params(options, transpiled_circuits, "Sampler", strict_depth=False, limit=job_index+1, ibmq_service=ibmq_service)[job_index]
+    if os.path.isdir(jobs_result_folder):
+        jobs_db_json = job_db.search_by_params(options, transpiled_circuits, "Sampler", strict_depth=False, limit=job_index+1)
+        jobs = []
+        for job_json in jobs_db_json["jobs"]:
+            this_job_id = job_json["job_id"]
+            if os.path.isfile(this_job_filepath := os.path.join(jobs_result_folder, f"{this_job_id}.json")):
+                this_result = load_job_result(this_job_filepath)
+                jobs.append(this_result)
+            else:
+                this_job_object = ibmq_service.job(job_id=this_job_id)
+                this_result = save_job_result(this_job_filepath, this_job_object)
+                jobs.append(this_result)
+    else:
+        jobs = job_db.search_by_params(options, transpiled_circuits, "Sampler", strict_depth=False, limit=job_index+1, ibmq_service=ibmq_service)
     site_gauge_observable_matrix = np.zeros((len(transpiled_circuits), len(diagonal_observables + non_diagonal_observables)))
     if return_samples_dicts: samples_dicts = []
     if return_postselected_samples_dicts: postselected_samples_dicts = []
     # Measure diagonal postselected operators
     diagonal_jobs = jobs[:len(transpiled_circuits)]
     for i, djob in enumerate(diagonal_jobs):
-        samples_dict = list(djob.result()[0].data.values())[0].get_counts()
+        if os.path.isdir(jobs_result_folder):
+            samples_dict= list(djob[0].data.values())[0].get_counts()
+        else:
+            samples_dict = list(djob.result()[0].data.values())[0].get_counts()
         if return_samples_dicts: samples_dicts.append(samples_dict)
         postselected_samples_dict = get_postselected_samples_dict(samples_dict, postselection_ops)
         if return_postselected_samples_dicts: postselected_samples_dicts.append(postselected_samples_dict)
