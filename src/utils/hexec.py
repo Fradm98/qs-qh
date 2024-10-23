@@ -65,9 +65,14 @@ class ExecDB:
                 jobs_objs.append(this_jobs_objs)
             return jobs_objs[0] if len(batches_to_return) == 1 else jobs_objs
 
-    def search_by_id(self, id):
-        ind = self._search_batch_index_by_id(id)
-        return self._data[ind]
+    def search_by_id(self, id, ibmq_service=None):
+        data = self._data[self._search_batch_index_by_id(id)]
+        if ibmq_service is None:
+            return data
+        else:
+            job_ids = [job["job_id"] for job in data["jobs"]]
+            job_objs =  [ibmq_service.job(job_id=job_id) for job_id in job_ids]
+            return job_objs
     
     def add(self, batch_args, physical_circuits, observable_generating_func_name, job_ids_arr):
         thisid = 0 if len(self._data) == 0 else self._data[-1]["id"] + 1
