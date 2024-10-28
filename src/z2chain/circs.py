@@ -269,8 +269,8 @@ def erradj_particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, pa
         if i == 0:
             measured_state_preparation_circuit = QuantumCircuit(2*chain_length-1, 2*chain_length-1)
             measured_state_preparation_circuit = measured_state_preparation_circuit.compose(state_preparation_logical_circ)
-            measured_state_preparation_circuit.measure(np.arange(2*chain_length-1), np.arange(2*chain_length-1))
             state_preparation_physical_circuit = state_prep_pm.run(measured_state_preparation_circuit)
+            state_preparation_physical_circuit.measure(np.array(final_index_layout)[np.argsort(final_index_layout)], np.argsort(np.array(final_index_layout)[np.argsort(final_index_layout)]))
             circs_to_return.append(state_preparation_physical_circuit)
         circs_to_return.append(this_time_physical_circuit)
     return circs_to_return
