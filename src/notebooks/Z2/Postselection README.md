@@ -53,3 +53,7 @@ After running the options, device and circuit cells. The _send jobs to hardware_
 ### Load jobs
 
 Jobs are found in the database by the options set in the options cell. Just run the _load jobs with the same options_ to load them in the jobs variable. This is passed to the x_t_plot function directly to generate the plots. The first time the jobs are downloaded, they are saved as files into the `jobs_result_folder` if specified. They are named as follows: `<job_id>.json`.
+
+### Plots
+
+The plotting functions in the last two cells are implemented in `src/z2chain/plotting.py`. Just pass the arguments with descriptive names and they should work.
