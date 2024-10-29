@@ -5,6 +5,7 @@ from qiskit.quantum_info import Pauli, PauliList
 from utils.hexec import execute_sampler_batch
 from qiskit import QuantumCircuit
 from collections import Counter
+from pymatching import Matching
 import sympy as sym
 import numpy as np
 import json
@@ -582,13 +583,6 @@ def save_job_result(filepath, job):
 def get_samples_layout_map(physical_circ_layout):
     final_indices = np.arange(len(physical_circ_layout))[np.argsort(physical_circ_layout)]
     return final_indices
-
-def get_layout_state(state_arr_str, physical_circ_layout):
-    state_arr_reordering = get_samples_layout_map(physical_circ_layout)
-    if type(state_arr_str) == str:
-        return "".join(np.array(list(state_arr_str))[state_arr_reordering])
-    else:
-        return state_arr_str[..., state_arr_reordering]
     
 def get_layout_state(state_arr_str, physical_circ_layout):
     state_arr_reordering = np.array(physical_circ_layout).argsort().argsort()
@@ -596,6 +590,16 @@ def get_layout_state(state_arr_str, physical_circ_layout):
         return "".join(np.array(list(state_arr_str[::-1]))[state_arr_reordering])
     else:
         return state_arr_str[..., ::-1][..., state_arr_reordering]
+    
+def undo_layout_state(layout_state_str, physical_circ_layout):
+    state_arr_reordering = np.array(physical_circ_layout).argsort().argsort()
+    state_arr_reordering_inv = np.zeros(len(physical_circ_layout), dtype=int)
+    for i, value in enumerate(state_arr_reordering):
+        state_arr_reordering_inv[value] = i
+    if type(layout_state_str) == str:
+        return "".join(np.array(list(layout_state_str))[state_arr_reordering_inv][::-1])
+    else:
+        return layout_state_str[..., state_arr_reordering_inv][..., ::-1]
 
 def diagonal_operators_check(operators):
     different_paulis = set("".join([pauli_to_str(op) for op in operators]))
@@ -685,7 +689,7 @@ def is_valid_state_string(string, postselection_ops):
     all_diagonal, basis = diagonal_operators_check(postselection_ops)
     if not all_diagonal:
         raise ValueError("Only supports diagonal postselection operators in some basis")
-    postselection_mask = np.array([[int(str(opel) == basis) for opel in operator[::-1]] for operator in postselection_ops])
+    postselection_mask = np.array([[int(str(opel) == basis) for opel in operator] for operator in postselection_ops])
     string_arr = np.array([int(c) for c in string])
     string_rep_arr = np.repeat(np.array([string_arr]), len(postselection_ops), axis=0)
     each_postselection_valid = ~(np.sum(string_rep_arr*postselection_mask, axis=1) % 2).astype(bool)
@@ -697,7 +701,7 @@ def get_postselected_samples_dict(samples_dict, postselection_ops, circ_layout=N
         raise ValueError("Only supports diagonal postselection operators in some basis")
     try:
         strings_arr = np.array([[int(c) for c in string] for string in samples_dict.keys()])
-        postselection_mask = np.array([[int(str(opel) == basis) for opel in operator[::-1]] for operator in postselection_ops])
+        postselection_mask = np.array([[int(str(opel) == basis) for opel in operator] for operator in postselection_ops])
     except ValueError:
         raise ValueError("All postselection operators and samples must have the same number of qubits")
     rep_strings_arr = np.repeat(strings_arr, len(postselection_ops), axis=0)
@@ -707,6 +711,33 @@ def get_postselected_samples_dict(samples_dict, postselection_ops, circ_layout=N
     each_string_postselections = ~(np.sum(rep_strings_arr*rep_postselection_mask, axis=1) % 2).reshape(len(samples_dict), len(postselection_ops)).astype(bool)
     is_valid_string = np.all(each_string_postselections, axis=1)
     return {state_string:counts for i, (state_string, counts) in enumerate(samples_dict.items()) if is_valid_string[i]}
+
+def get_recovered_postselected_samples_dict(samples_dict, postselection_ops, circ_layout=None):
+    all_diagonal, basis = diagonal_operators_check(postselection_ops)
+    if not all_diagonal:
+        raise ValueError("Only supports diagonal postselection operators in some basis")
+    try:
+        strings_arr = np.array([[int(c) for c in string] for string in samples_dict.keys()])
+        postselection_mask = np.array([[int(str(opel) == basis) for opel in operator] for operator in postselection_ops])
+    except ValueError:
+        raise ValueError("All postselection operators and samples must have the same number of qubits")
+    decoder = Matching(postselection_mask)
+    if circ_layout is not None:
+        strings_arr = get_layout_state(strings_arr, circ_layout)
+    string_syndromes = (strings_arr @ postselection_mask.T) % 2
+    predicted_flips = decoder.decode_batch(string_syndromes)
+    recovered_strings = (strings_arr + predicted_flips) % 2
+    if circ_layout is not None:
+        recovered_strings = undo_layout_state(recovered_strings, circ_layout)
+    recovered_samples_dict = {}
+    fmt_str = "%i"*recovered_strings.shape[1]
+    for i, string in enumerate(samples_dict.keys()):
+        recovered_string = fmt_str % tuple(recovered_strings[i])
+        if recovered_samples_dict.get(recovered_string, None) is not None:
+            recovered_samples_dict[recovered_string] = recovered_samples_dict[recovered_string] + samples_dict[string]
+        else:
+            recovered_samples_dict[recovered_string] = samples_dict[string]
+    return recovered_samples_dict
 
 def measure_diagonal_observables(samples_dict, diagonal_observables, circ_layout=None):
     nqubits = len(diagonal_observables[0])
@@ -829,7 +860,8 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
         else:
             samples_dict = list(djob.result()[0].data.values())[0].get_counts()
         if return_samples_dicts: samples_dicts.append(samples_dict)
-        postselected_samples_dict = get_postselected_samples_dict(samples_dict, postselection_ops, jobs_layout[i])
+        # postselected_samples_dict = get_postselected_samples_dict(samples_dict, postselection_ops, jobs_layout[i])
+        postselected_samples_dict = get_recovered_postselected_samples_dict(samples_dict, postselection_ops, jobs_layout[i])
         if return_postselected_samples_dicts: postselected_samples_dicts.append(postselected_samples_dict)
         expectation_values = measure_diagonal_observables(postselected_samples_dict, diagonal_observables, jobs_layout[i])
         site_gauge_observable_matrix[i, :len(diagonal_observables)] = expectation_values
