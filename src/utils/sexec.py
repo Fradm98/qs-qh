@@ -5,6 +5,7 @@
 
 from qiskit_aer.primitives import EstimatorV2, SamplerV2
 from utils.circs import check_and_measure_active_qubits
+from utils.hexec import map_obs_to_circs
 
 def execute_simulation_estimator_batch(simulator_options_dict, estimator_options_dict, circuits, observable_generating_funcs):
     if type(circuits) != list:
@@ -16,10 +17,11 @@ def execute_simulation_estimator_batch(simulator_options_dict, estimator_options
     
     estimator_options_dict["backend_options"] = simulator_options_dict
 
+    mapped_observables =  map_obs_to_circs(circuits, observable_generating_funcs)
+
     estimator = EstimatorV2(options=estimator_options_dict)
-    for circuit in circuits:
-        observables = [observable_generating_func(circuit.num_qubits) for observable_generating_func in observable_generating_funcs]
-        pub = (circuit, observables)
+    for circuit, obs in zip(circuits, mapped_observables):
+        pub = (circuit, obs)
         job_objs.append(estimator.run([pub]))
     
     return job_objs
