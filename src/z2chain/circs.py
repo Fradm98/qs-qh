@@ -55,31 +55,24 @@ class TotalSingleBodyPropagator(QuantumCircuit):
 class TotalInteractionPropagator(QuantumCircuit):
     def __init__(self, chain_length, x_basis=False):
         nqubits = 2*chain_length - 1
-        qubit_list = np.arange(nqubits)
-        int_qb_inds_first = np.array(qubit_list[:-1])
-        int_qb_inds_second = np.array(qubit_list[1:])
-        t = Parameter("t")
+        first_cnots_trgt_qubits = np.arange(0, nqubits-1, 2)
+        first_cnots_ctrl_qubits = np.arange(1, nqubits, 2)
+        second_cnots_trgt_qubits = np.arange(2, nqubits, 2)
+        t_lamb = Parameter("t_lamb")
+        t_g = Parameter("t_g")
         super().__init__(nqubits)
-        local_prop1 = LocalInteractionPropagatorFirst(x_basis)
-        local_prop2 = LocalInteractionPropagatorSecond(x_basis)
-        local_prop_instruction1 = circuit_to_instruction(local_prop1)
-        local_prop_instruction2 = circuit_to_instruction(local_prop2)
-        for qubits in int_qb_inds_first.reshape((len(int_qb_inds_first)//2, 2)):
-            self.append(local_prop_instruction1, list(qubits))
-
-        for qubits in int_qb_inds_second.reshape((len(int_qb_inds_second)//2, 2)):
-            self.append(local_prop_instruction2, list(qubits))
-
         if x_basis:
-            self.rz(-2*t, np.arange(1, nqubits, 2))
+            self.cx(first_cnots_trgt_qubits, first_cnots_ctrl_qubits)
+            self.cx(second_cnots_trgt_qubits, first_cnots_ctrl_qubits)
+            self.rz(-2*t_lamb, np.arange(1, nqubits, 2))
+            self.cx(second_cnots_trgt_qubits, first_cnots_ctrl_qubits)
+            self.cx(first_cnots_trgt_qubits, first_cnots_ctrl_qubits)
         else:
-            self.rx(-2*t, np.arange(1, nqubits, 2))
-
-        for qubits in int_qb_inds_second.reshape((len(int_qb_inds_second)//2, 2)):
-            self.append(local_prop_instruction2, list(qubits))
-
-        for qubits in int_qb_inds_first.reshape((len(int_qb_inds_first)//2, 2)):
-            self.append(local_prop_instruction1, list(qubits))
+            self.cx(first_cnots_ctrl_qubits, first_cnots_trgt_qubits)
+            self.cx(first_cnots_ctrl_qubits, second_cnots_trgt_qubits)
+            self.rx(-2*t_lamb, np.arange(1, nqubits, 2))
+            self.cx(first_cnots_ctrl_qubits, second_cnots_trgt_qubits)
+            self.cx(first_cnots_ctrl_qubits, first_cnots_trgt_qubits)
 
 class TotalInteractionPropagatorDD(QuantumCircuit):
     def __init__(self, chain_length, x_basis=False):
