@@ -251,3 +251,16 @@ def create_estimator_options(default_shots, optimization_levels, zne_extrapolato
         }
         estimator_options.append(this_estimator_options)
     return estimator_options
+
+def backends_objs_to_names(backends_arr):
+        try:
+            backends_arr = list(backends_arr)
+        except TypeError:
+            backends_arr = [backends_arr]
+        backends_name_arr = []
+        for backend in backends_arr:
+            if type(backend) != str:
+                backends_name_arr.append(backend.name)
+            else:
+                backends_name_arr.append(backend)
+        return backends_name_arr if len(backends_name_arr) > 1 else backends_name_arr[0]

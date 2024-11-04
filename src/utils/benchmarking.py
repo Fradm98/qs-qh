@@ -109,19 +109,6 @@ class BenchmarkDB():
             if (not one_to_be_completed) and (not check_all):
                 break
         self.save()
-
-    def _backends_objs_to_names(self, backends_arr):
-        try:
-            backends_arr = list(backends_arr)
-        except TypeError:
-            backends_arr = [backends_arr]
-        backends_name_arr = []
-        for backend in backends_arr:
-            if type(backend) != str:
-                backends_name_arr.append(backend.name)
-            else:
-                backends_name_arr.append(backend)
-        return backends_name_arr
     
     def _date_range_to_datetime_range(self, date_range):
         return [datetime.fromisoformat(datestr) if type(datestr)==str else datestr for datestr in date_range]
@@ -140,7 +127,7 @@ class BenchmarkDB():
         if depths_arr is not None:
             search_functions.append(lambda test: test["depth_arr"] == sorted(depths_arr))
         if backends_arr is not None:
-            backends_name_arr = self._backends_objs_to_names(backends_arr)
+            backends_name_arr = hexec.backends_objs_to_names(backends_arr)
             search_functions.append(lambda test: test["backends"] == sorted(backends_name_arr))
         if estimator_opt_dicts is not None:
             def estimator_opt_dicts_searchf(test):
@@ -239,7 +226,7 @@ class BenchmarkDB():
                     np.savetxt(results_filepath, simulated_evs)
         
         # Get observables for each number of qubits and depths
-        backends_name_arr = self._backends_objs_to_names(backends_arr)
+        backends_name_arr = hexec.backends_objs_to_names(backends_arr)
         print(f"\rSearching dabatase".ljust(100), end="")
         found_benchmarks = self.search_by_params(nqubits_arr, depths_arr, backends_arr, estimator_opt_dicts, test_circuit_name, observable_name, date_range)
         estimator_opt_dicts_str = [json.dumps(estimator_opt_dict) for estimator_opt_dict in estimator_opt_dicts]
