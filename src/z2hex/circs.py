@@ -230,7 +230,7 @@ class TotalInteractionPropagator(QuantumCircuit):
         t_lamb = Parameter("t_λ")
         gauge_qubits = [link.qubit for link in lattice.edges.values()]
         schedule = [(0,-0.5),(-0.5,0),(0,0.5)]
-        schedule_donwards = [(0.5,0),(0,-0.5),(0,0.5)]
+        schedule_downwards = [(0.5,0),(0,-0.5),(0,0.5)]
         for i in range(7):
             for i in range(7):
                 if i == 3:
@@ -241,7 +241,7 @@ class TotalInteractionPropagator(QuantumCircuit):
                 else:
                     typ = 6-i if i > 3 else i
                     for v in lattice.vertices.values():
-                        this_schedule = schedule_donwards[typ] if v.downwards else schedule[typ]
+                        this_schedule = schedule_downwards[typ] if v.downwards else schedule[typ]
                         ec = (v.coords[0] + this_schedule[0], v.coords[1] + this_schedule[1])
                         if ec in lattice.edges:
                             if x_basis:
@@ -270,7 +270,7 @@ class TotalInteractionPropagatorDD(QuantumCircuit):
                 else:
                     typ = 6-i if i > 3 else i
                     for v in lattice.vertices.values():
-                        this_schedule = schedule_donwards[typ] if v.downwards else schedule[typ]
+                        this_schedule = schedule_downwards[typ] if v.downwards else schedule[typ]
                         ec = (v.coords[0] + this_schedule[0], v.coords[1] + this_schedule[1])
                         if ec in lattice.edges:
                             if x_basis:
