@@ -267,3 +267,23 @@ def erradj_particle_pair_quench_simulation_circuits(chain_length, J, h, lamb, pa
             circs_to_return.append(state_preparation_physical_circuit)
         circs_to_return.append(this_time_physical_circuit)
     return circs_to_return
+
+def odr_calibration_circuits(chain_length, final_time, steps, backend, eplg_absolute, g=None, layout=None, x_basis=True, barriers=False):
+    layout = layout[:2*chain_length-1] if layout is not None else None
+    t_arr = np.linspace(0, final_time, steps)
+    nlayers_arr = get_erradj_number_of_trotter_layers(t_arr, eplg_absolute, trotter_order=2)
+    initial_pm = generate_preset_pass_manager(optimization_level=0, backend=backend, initial_layout=layout)
+    circs_to_return = [QuantumCircuit(2*chain_length-1)]
+    single_layer_cal_logical_circuit = SecondOrderTrotter(chain_length, 0, 0, 0, 0, 1, g=g, x_basis=x_basis, barriers=barriers)
+    single_layer_cal_physical_circuit = initial_pm.run(single_layer_cal_logical_circuit)
+    final_index_layout = single_layer_cal_physical_circuit.layout.final_index_layout()
+    sqcancel_pm = PassManager([Optimize1qGates(target=backend.target), Optimize1qGatesDecomposition(target=backend.target), Optimize1qGatesSimpleCommutation(target=backend.target)])
+    for i in range(steps-1):
+        this_cal_circuit = single_layer_cal_physical_circuit.repeat(nlayers_arr[i+1]).decompose()
+        this_cal_circuit = remove_idle_qwires(this_cal_circuit, relabeling=np.arange(len(final_index_layout))[np.argsort(final_index_layout)])
+        layout_dict = {final_index_layout[i]:this_cal_circuit.qubits[i] for i in range(this_cal_circuit.num_qubits)}
+        layout_pm = PassManager([SetLayout(layout=Layout(layout_dict)), FullAncillaAllocation(coupling_map=backend.target), ApplyLayout()])
+        sqopt_pm = StagedPassManager(stages=["optimization", "layout"], layout=layout_pm, optimization=sqcancel_pm)
+        this_cal_circuit = sqopt_pm.run(this_cal_circuit)
+        circs_to_return.append(this_cal_circuit)
+    return circs_to_return
