@@ -185,7 +185,7 @@ class HeavyHexLattice:
     def max_y(self):
         return max([coords[0] for coords in self.coords])
     
-    def plot_lattice(self, scale=1.5, number_qubits=False, initial_qubit=0, backend=None):
+    def plot_lattice(self, scale=1.5, number_qubits=False, first_qubit=None, backend=None):
         plt.rc("font", family="serif")
         vertex_x = np.array([v[1] for v in sorted(list(self.vertices.keys()))], dtype=int)
         vertex_y = np.array([self.max_y - v[0] for v in sorted(list(self.vertices.keys()))], dtype=int)
@@ -202,10 +202,10 @@ class HeavyHexLattice:
         plt.scatter(edges_boxes_x, edges_boxes_y, 400*scale, marker=(4, 0, 45), c="white", edgecolors="black", zorder=2)
         if number_qubits:
             if backend is None:
-                labels = [str(initial_qubit + i) for i in range(len(self.coords))]
+                labels = [str(first_qubit + i) for i in range(len(self.coords))]
             else:
                 backend = backends_objs_to_names(backend)
-                labels = [str(qb) for qb in self.initial_qubit_layout(initial_qubit, backend)]
+                labels = [str(qb) for qb in self.initial_qubit_layout(first_qubit, backend)]
             ttransform = mpl.transforms.Affine2D().translate(0, -1*scale)
             for i, (y, x) in enumerate(self.coords):
                 text = plt.text(x, self.max_y - y, labels[i], horizontalalignment="center", verticalalignment="center", fontdict={"size": 5.5*scale})
