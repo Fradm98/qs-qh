@@ -105,15 +105,19 @@ class HeavyHexLattice:
                     connected_edges_coords.append(coords)
         return connected_edges_coords
 
-    def initial_qubit_layout(self, first_qubit=None, backend=None):
+    def initial_qubit_layout(self, first_qubit=None, backend=None, reflex=None):
         """Returns the mapping from own qubit indices to ibm physical qubits
-           Arguments:
-            - the output of gen_lattice: coords, vertices and edges
-            - the index of the top-left physical qubit to be used
-            - the name of the target backend
-           Note: for machines other than ibm_fez, qubits are mirrored left to right"""
+        Arguments:
+            first_qubit:
+                The index of the top-left physical qubit to be used
+                Default value: the top-left qubit of the top-left plaquette in the device
+            backend:
+                Device backend
+            reflex:
+                Whether to mirror the layout from left to right
+                Default: only mirror when the layout does not fit if unmirrored
+        """
         backend = backends_objs_to_names(backend)
-        reflex = backend != 'ibm_fez' and backend != None
         ibm_qubit_coords = []
         if first_qubit == None:
             if backend == 'ibm_fez':
@@ -158,6 +162,13 @@ class HeavyHexLattice:
             ibm_qubit_coords = self.coords
         ibm_qubit_coords = sorted(ibm_qubit_coords)
         ibm_origin = ibm_qubit_coords[first_qubit]
+        if (ibm_origin[0]+1, ibm_origin[1]) not in ibm_qubit_coords:
+            raise ValueError("Invalid initial qubit")
+        if reflex is None:
+            if (ibm_origin[0]+2,ibm_origin[1]-2) not in ibm_qubit_coords:
+                reflex = True
+            else:
+                reflex = False
         if reflex:
             own_origin = self.coords[0]
             for c in self.coords:
