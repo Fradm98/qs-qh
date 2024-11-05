@@ -2,7 +2,7 @@ from qiskit.quantum_info import Pauli, PauliList
 import z2chain.operators as chainops
 import numpy as np
 
-def local_pauli_z(lattice, qubit_ind):
+def local_pauli_x(lattice, qubit_ind):
     return chainops.local_pauli_x(len(lattice), qubit_ind)
 
 def local_pauli_z(lattice, qubit_ind):
