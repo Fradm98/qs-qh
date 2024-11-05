@@ -24,6 +24,7 @@ def x_t_plot(site_gauge_observable_matrix, nxticks=5, filepath=""):
     plt.ylabel("step")
     plt.xticks(np.round(np.linspace(0, site_gauge_observable_matrix.shape[1]-1, nxticks)).astype(int), np.round(np.linspace(1, site_gauge_observable_matrix.shape[1], nxticks)).astype(int))
     plt.tight_layout()
+    plt.rcdefaults()
 
     if filepath:
         plt.savefig(filepath, dpi=300, facecolor="none")
@@ -53,6 +54,7 @@ def discrepancies_plot(exact_site_gauge_observable_matrix, approximated_site_gau
     plt.xlabel(r"Sites")
     plt.ylabel("step")
     plt.tight_layout()
+    plt.rcdefaults()
 
     if filepath:
         plt.savefig(filepath, dpi=300, facecolor="none")
@@ -101,5 +103,6 @@ def plot_n_discarded_samples(samples_dicts, postselected_samples_dicts, x_arr=No
     else:
         plt.xlabel("Sample sets", labelpad=10)
     plt.tight_layout()
+    plt.rcdefaults()
     if filepath:
         plt.savefig(filepath, dpi=300, facecolor="none")
