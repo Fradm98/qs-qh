@@ -1,9 +1,13 @@
 from qiskit.quantum_info import Pauli, PauliList, SparsePauliOp
 
 def local_pauli_z(nqubits, qubit_ind):
+    if qubit_ind > nqubits:
+        raise ValueError("qubit_ind must be in the interval [0, nqubits)")
     return Pauli("I"*qubit_ind + "Z" + "I"*(nqubits - qubit_ind - 1))
 
 def local_pauli_x(nqubits, qubit_ind):
+    if qubit_ind > nqubits:
+        raise ValueError("qubit_ind must be in the interval [0, nqubits)")
     return Pauli("I"*qubit_ind + "X" + "I"*(nqubits - qubit_ind - 1))
 
 def pauli_zs_mean(nqubits):
