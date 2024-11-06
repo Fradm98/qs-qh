@@ -213,7 +213,8 @@ class HeavyHexLattice:
         plt.scatter(edges_boxes_x, edges_boxes_y, 400*scale, marker=(4, 0, 45), c="white", edgecolors="black", zorder=2)
         if number_qubits:
             if backend is None:
-                labels = [str(first_qubit + i) for i in range(len(self.coords))]
+                start = 0 if first_qubit is None else first_qubit
+                labels = [str(start + i) for i in range(len(self.coords))]
             else:
                 backend = backends_objs_to_names(backend)
                 labels = [str(qb) for qb in self.initial_qubit_layout(first_qubit, backend)]
@@ -230,5 +231,6 @@ class HeavyHexLattice:
         if backend is not None:
             if backend != 'ibm_fez' and backend != None:
                 ax.invert_xaxis()
+        plt.ylim([-0.2, self.max_y+0.2])
         plt.tight_layout()
         plt.rcdefaults()
