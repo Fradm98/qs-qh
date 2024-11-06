@@ -234,3 +234,13 @@ class HeavyHexLattice:
         plt.ylim([-0.2, self.max_y+0.2])
         plt.tight_layout()
         plt.rcdefaults()
+
+def is_edge_coords(coords):
+    if type(coords) == tuple:
+        return (coords[0] % 1 != 0) or (coords[1] % 1 != 0)
+    else:
+        try:
+            coords = np.array(coords)
+            return ~np.equal(coords.sum(axis=1) % 1, 0)
+        except np.AxisError:
+            raise np.AxisError("Coords is not a valid tuple or N x 2 array")
