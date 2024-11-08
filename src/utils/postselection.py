@@ -805,7 +805,7 @@ def simulate_postselected_operators(fake_backend, sampler_opt_dict, transpiled_c
     for i, djob in enumerate(diagonal_jobs):
         samples_dict = list(djob.result()[0].data.values())[0].get_counts()
         if return_samples_dicts: samples_dicts.append(samples_dict)
-        postselected_samples_dict = get_postselected_samples_dict(samples_dict, postselection_ops, circ_layout=basis_changed_circuits[i].layout.final_index_layout())
+        postselected_samples_dict = get_recovered_postselected_samples_dict(samples_dict, postselection_ops, circ_layout=basis_changed_circuits[i].layout.final_index_layout())
         if return_postselected_samples_dicts: postselected_samples_dicts.append(postselected_samples_dict)
         expectation_values = measure_diagonal_observables(samples_dict, diagonal_observables, circ_layout=basis_changed_circuits[i].layout.final_index_layout())
         site_gauge_observable_matrix[i, :len(diagonal_observables)] = expectation_values
