@@ -59,7 +59,6 @@ class TotalInteractionPropagator(QuantumCircuit):
         first_cnots_ctrl_qubits = np.arange(1, nqubits, 2)
         second_cnots_trgt_qubits = np.arange(2, nqubits, 2)
         t_lamb = Parameter("t_lamb")
-        t_g = Parameter("t_g")
         super().__init__(nqubits)
         if x_basis:
             self.cx(first_cnots_trgt_qubits, first_cnots_ctrl_qubits)
@@ -75,25 +74,27 @@ class TotalInteractionPropagator(QuantumCircuit):
             self.cx(first_cnots_ctrl_qubits, first_cnots_trgt_qubits)
 
 class TotalInteractionPropagatorDD(QuantumCircuit):
-    def __init__(self, chain_length, x_basis=False):
+    def __init__(self, chain_length, t_g, std_tg_factor=0.5, x_basis=False):
         nqubits = 2*chain_length - 1
         first_cnots_trgt_qubits = np.arange(0, nqubits-1, 2)
         first_cnots_ctrl_qubits = np.arange(1, nqubits, 2)
         second_cnots_trgt_qubits = np.arange(2, nqubits, 2)
         t_lamb = Parameter("t_lamb")
-        t_g = Parameter("t_g")
+        random_times = np.random.normal(t_g, std_tg_factor*t_g, chain_length)
         super().__init__(nqubits)
         if x_basis:
             self.cx(first_cnots_trgt_qubits, first_cnots_ctrl_qubits)
             self.cx(second_cnots_trgt_qubits, first_cnots_ctrl_qubits)
-            self.rx(-2*t_g, np.arange(0, nqubits, 2))
+            for i, qind in enumerate(range(0, nqubits, 2)):
+                self.rx(-2*random_times[i], qind)
             self.rz(-2*t_lamb, np.arange(1, nqubits, 2))
             self.cx(second_cnots_trgt_qubits, first_cnots_ctrl_qubits)
             self.cx(first_cnots_trgt_qubits, first_cnots_ctrl_qubits)
         else:
             self.cx(first_cnots_ctrl_qubits, first_cnots_trgt_qubits)
             self.cx(first_cnots_ctrl_qubits, second_cnots_trgt_qubits)
-            self.rz(-2*t_g, np.arange(0, nqubits, 2))
+            for i, qind in enumerate(range(0, nqubits, 2)):
+                self.rz(-2*random_times[i], qind)
             self.rx(-2*t_lamb, np.arange(1, nqubits, 2))
             self.cx(first_cnots_ctrl_qubits, second_cnots_trgt_qubits)
             self.cx(first_cnots_ctrl_qubits, first_cnots_trgt_qubits)
@@ -139,13 +140,11 @@ def FirstOrderTrotter(chain_length, J, h, lamb, t_total, layers, sqrot_first=Fal
 
 def SecondOrderTrotter(chain_length, J, h, lamb, t_total, layers, g=None, x_basis=False, barriers=False):
     t_layer = t_total/layers
-    # total_interaction_propagator = TotalInteractionPropagator(chain_length, x_basis)
     if g is None:
         total_interaction_propagator = TotalInteractionPropagator(chain_length, x_basis).decompose()
-        total_interaction_propagator.assign_parameters([lamb*t_layer], inplace=True)
     else:
-        total_interaction_propagator = TotalInteractionPropagatorDD(chain_length, x_basis)
-        total_interaction_propagator.assign_parameters([g*t_layer, lamb*t_layer], inplace=True)
+        total_interaction_propagator = TotalInteractionPropagatorDD(chain_length, t_layer*g, x_basis=x_basis)
+    total_interaction_propagator.assign_parameters([lamb*t_layer], inplace=True)
     total_single_body_propagator = TotalSingleBodyPropagator(chain_length, x_basis)
     total_single_body_propagator.assign_parameters([h*t_layer/2, t_layer*J/2], inplace=True)
     layer = total_single_body_propagator.compose(total_interaction_propagator).compose(total_single_body_propagator)
@@ -273,7 +272,10 @@ def odr_calibration_circuits(chain_length, final_time, steps, backend, eplg_abso
     t_arr = np.linspace(0, final_time, steps)
     nlayers_arr = get_erradj_number_of_trotter_layers(t_arr, eplg_absolute, trotter_order=2)
     initial_pm = generate_preset_pass_manager(optimization_level=0, backend=backend, initial_layout=layout)
-    circs_to_return = [QuantumCircuit(2*chain_length-1)]
+    first_circuit = QuantumCircuit(2*chain_length-1)
+    first_circuit.measure_all()
+    first_physical_circuit = initial_pm.run(first_circuit)
+    circs_to_return = [first_physical_circuit]
     single_layer_cal_logical_circuit = SecondOrderTrotter(chain_length, 0, 0, 0, 0, 1, g=g, x_basis=x_basis, barriers=barriers)
     single_layer_cal_physical_circuit = initial_pm.run(single_layer_cal_logical_circuit)
     final_index_layout = single_layer_cal_physical_circuit.layout.final_index_layout()
