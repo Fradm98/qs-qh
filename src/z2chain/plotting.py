@@ -16,7 +16,7 @@ def x_t_plot(site_gauge_observable_matrix, nxticks=5, filepath=""):
 
     aspect = site_gauge_observable_matrix.shape[0]/site_gauge_observable_matrix.shape[1]/15
 
-    plt.imshow(site_gauge_observable_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2)#, vmax=1, vmin=0)
+    plt.imshow(site_gauge_observable_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2, vmax=1, vmin=0)
     plt.title(r"Particle \& Gauge occupation")
     cbar = plt.colorbar()
     cbar.ax.set_ylabel(r"$(1 - \langle Z \rangle)/2$", labelpad=10)
