@@ -297,7 +297,7 @@ def odr_forward_circuits(chain_length, final_time, steps, backend, eplg_absolute
         circs_to_return.append(this_cal_circuit)
     return circs_to_return
 
-def odr_compuncomp_circuits(chain_length, J, h, lamb, final_time, steps, backend, eplg_absolute, g=None, layout=None, x_basis=False, barriers=False):
+def odr_compuncomp_circuits(chain_length, J, h, lamb, final_time, steps, backend, eplg_absolute, g=None, particle_pair_left_position=None, particle_pair_length=1, layout=None, x_basis=False, barriers=False):
     layout = layout[:2*chain_length-1] if layout is not None else None
     t_arr = np.linspace(0, final_time, steps)
     nlayers_arr = get_erradj_number_of_trotter_layers(t_arr, eplg_absolute, trotter_order=2)
@@ -305,10 +305,19 @@ def odr_compuncomp_circuits(chain_length, J, h, lamb, final_time, steps, backend
     nlayers_arr[odd_nlayers] = nlayers_arr[odd_nlayers] + 1
     t_perlayer_arr = t_arr / nlayers_arr
     initial_pm = generate_preset_pass_manager(optimization_level=0, backend=backend, initial_layout=layout)
-    first_circuit = QuantumCircuit(2*chain_length-1)
-    first_circuit.measure_all()
-    first_physical_circuit = initial_pm.run(first_circuit)
-    circs_to_return = [first_physical_circuit]
+    if particle_pair_left_position is None:
+        first_circuit = QuantumCircuit(2*chain_length-1)
+        first_circuit.measure_all()
+        first_physical_circuit = initial_pm.run(first_circuit)
+        circs_to_return = [first_physical_circuit]
+    else:
+        first_circuit = particle_pair_initial_state(chain_length, particle_pair_left_position, particle_pair_length, x_basis)
+        first_physical_circuit = QuantumCircuit(2*chain_length-1, 2*chain_length-1)
+        first_physical_circuit.compose(first_circuit)
+        first_physical_circuit = initial_pm.run(first_physical_circuit)
+        final_index_layout = first_physical_circuit.layout.final_index_layout()
+        first_physical_circuit.measure(np.array(final_index_layout)[np.argsort(final_index_layout)], np.argsort(np.array(final_index_layout)[np.argsort(final_index_layout)]))
+        circs_to_return = [first_physical_circuit]
     sqcancel_pm = PassManager([Optimize1qGates(target=backend.target), Optimize1qGatesDecomposition(target=backend.target), Optimize1qGatesSimpleCommutation(target=backend.target)])
     for i in range(steps-1):
         forwards_trotter_layer = SecondOrderTrotter(chain_length, J, h, lamb, t_perlayer_arr[i+1], 1, g=g, x_basis=x_basis, barriers=barriers)
