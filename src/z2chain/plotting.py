@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import scipy as sp
 import numpy as np
 
-def x_t_plot(site_gauge_observable_matrix, nxticks=5, filepath=""):
+def x_t_plot(site_gauge_observable_matrix, cbar_range=None, nxticks=5, filepath=""):
     if isinstance(site_gauge_observable_matrix[0], BasePrimitiveJob) or isinstance(site_gauge_observable_matrix[0], RuntimeJob):
         site_gauge_observable_matrix = convert_jobs_to_site_gauge_matrix(site_gauge_observable_matrix)
 
@@ -15,7 +15,11 @@ def x_t_plot(site_gauge_observable_matrix, nxticks=5, filepath=""):
     fig, ax = plt.subplots(1, 1, figsize=[12, 8])
 
     aspect = site_gauge_observable_matrix.shape[0]/site_gauge_observable_matrix.shape[1]/15
-
+    
+    if cbar_range is None:
+        plt.imshow(site_gauge_observable_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2)
+    else:
+        plt.imshow(site_gauge_observable_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2, vmax=cbar_range[1], vmin=cbar_range[0])
     plt.imshow(site_gauge_observable_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2, vmax=1, vmin=0)
     plt.title(r"Particle \& Gauge occupation")
     cbar = plt.colorbar()
@@ -24,10 +28,10 @@ def x_t_plot(site_gauge_observable_matrix, nxticks=5, filepath=""):
     plt.ylabel("step")
     plt.xticks(np.round(np.linspace(0, site_gauge_observable_matrix.shape[1]-1, nxticks)).astype(int), np.round(np.linspace(1, site_gauge_observable_matrix.shape[1], nxticks)).astype(int))
     plt.tight_layout()
-    plt.rcdefaults()
-
     if filepath:
         plt.savefig(filepath, dpi=300, facecolor="none")
+    plt.show()
+    plt.rcdefaults()
 
 def discrepancies_plot(exact_site_gauge_observable_matrix, approximated_site_gauge_observable_matrix, filepath=""):
     if isinstance(exact_site_gauge_observable_matrix[0], BasePrimitiveJob) or isinstance(exact_site_gauge_observable_matrix[0], RuntimeJob):
@@ -54,10 +58,10 @@ def discrepancies_plot(exact_site_gauge_observable_matrix, approximated_site_gau
     plt.xlabel(r"Sites")
     plt.ylabel("step")
     plt.tight_layout()
-    plt.rcdefaults()
-
     if filepath:
         plt.savefig(filepath, dpi=300, facecolor="none")
+    plt.show()
+    plt.rcdefaults()
 
 def plot_n_discarded_samples(samples_dicts, postselected_samples_dicts, x_arr=None, xlabel=None, regression=False, filepath=""):
     plt.rc("text", usetex=True)
@@ -75,7 +79,7 @@ def plot_n_discarded_samples(samples_dicts, postselected_samples_dicts, x_arr=No
         x_arr = np.arange(1, len(samples_dicts)+1)
     else:
         if len(x_arr) != len(samples_dicts):
-            raise ValueError("x_arr mush be the same length as samples_dicts")
+            raise ValueError("x_arr must be the same length as samples_dicts")
     ntotal_samples_arr = np.zeros(len(samples_dicts))
     npostselected_samples_arr = np.zeros(len(samples_dicts))
 
@@ -88,7 +92,7 @@ def plot_n_discarded_samples(samples_dicts, postselected_samples_dicts, x_arr=No
         npostselected_samples_arr[i] = np.sum(list(postselected_samples_dict.values()))
     
     ratio_arr = npostselected_samples_arr/ntotal_samples_arr
-    fix, ax = plt.subplots(figsize=[8, 5])
+    fig, ax = plt.subplots(figsize=[8, 5])
     if regression:
         reg_func = lambda x, a, b: b*np.exp(-a*x)
         popt, pcov = sp.optimize.curve_fit(reg_func, x_arr, ratio_arr, p0=[1, 1])
@@ -103,6 +107,7 @@ def plot_n_discarded_samples(samples_dicts, postselected_samples_dicts, x_arr=No
     else:
         plt.xlabel("Sample sets", labelpad=10)
     plt.tight_layout()
-    plt.rcdefaults()
     if filepath:
         plt.savefig(filepath, dpi=300, facecolor="none")
+    plt.show()
+    plt.rcdefaults()
