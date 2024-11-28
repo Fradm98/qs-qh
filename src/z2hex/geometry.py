@@ -104,7 +104,46 @@ class HeavyHexLattice:
                 if not (dx == 0 and dy == 0):
                     connected_edges_coords.append(coords)
         return connected_edges_coords
-
+    @staticmethod
+    def get_backend_coordinates(backend_name):
+        """Returns a list with the qubit coordinates of the specified backend
+        """
+        ibm_qubit_coords = []
+        if backend_name == 'ibm_fez' or backend_name == 'ibm_marrakech':
+            for i in range(8):
+                for j in range(16):
+                    ibm_qubit_coords.append((2*i, j))
+            for i in range(4):
+                for j in range(4):
+                    ibm_qubit_coords.append((4*i+1, 4*j+3))
+            for i in range(3):
+                for j in range(4):
+                    ibm_qubit_coords.append((4*i+3, 4*j+1))
+        elif backend_name == 'ibm_torino':
+            for i in range(7):
+                for j in range(15):
+                    ibm_qubit_coords.append((2*i, j))
+            for i in range(4):
+                for j in range(4):
+                    ibm_qubit_coords.append((4*i+1, 4*j))
+            for i in range(3):
+                for j in range(4):
+                    ibm_qubit_coords.append((4*i+3, 4*j+2))
+        else: # Eagle r3
+            for i in range(7):
+                for j in range(15):
+                    if i == 0 and j == 14:
+                        continue
+                    if i == 6 and j == 0:
+                        continue
+                    ibm_qubit_coords.append((2*i, j))
+            for i in range(3):
+                for j in range(4):
+                    ibm_qubit_coords.append((4*i+1, 4*j))
+            for i in range(3):
+                for j in range(4):
+                    ibm_qubit_coords.append((4*i+3, 4*j+2))
+        return sorted(ibm_qubit_coords)
     def initial_qubit_layout(self, first_qubit=None, backend=None, reflex=None):
         """Returns the mapping from own qubit indices to ibm physical qubits
         Arguments:
@@ -124,66 +163,91 @@ class HeavyHexLattice:
                 first_qubit = 3
             else:
                 first_qubit = 0
-        if backend == 'ibm_fez':
-            for i in range(8):
-                for j in range(16):
-                    ibm_qubit_coords.append((2*i, j))
-            for i in range(4):
-                for j in range(4):
-                    ibm_qubit_coords.append((4*i+1, 4*j+3))
-            for i in range(3):
-                for j in range(4):
-                    ibm_qubit_coords.append((4*i+3, 4*j+1))
-        elif backend == 'ibm_torino':
-            for i in range(7):
-                for j in range(15):
-                    ibm_qubit_coords.append((2*i, j))
-            for i in range(4):
-                for j in range(4):
-                    ibm_qubit_coords.append((4*i+1, 4*j))
-            for i in range(3):
-                for j in range(4):
-                    ibm_qubit_coords.append((4*i+3, 4*j+2))
-        elif backend != None: # Eagle r3
-            for i in range(7):
-                for j in range(15):
-                    if i == 0 and j == 14:
-                        continue
-                    if i == 6 and j == 0:
-                        continue
-                    ibm_qubit_coords.append((2*i, j))
-            for i in range(3):
-                for j in range(4):
-                    ibm_qubit_coords.append((4*i+1, 4*j))
-            for i in range(3):
-                for j in range(4):
-                    ibm_qubit_coords.append((4*i+3, 4*j+2))
+        if backend is not None:
+            ibm_qubit_coords = HeavyHexLattice.get_backend_coordinates(backend)
         else:
             ibm_qubit_coords = self.coords
         ibm_qubit_coords = sorted(ibm_qubit_coords)
         ibm_origin = ibm_qubit_coords[first_qubit]
-        if (ibm_origin[0]+1, ibm_origin[1]) not in ibm_qubit_coords:
-            raise ValueError("Invalid initial qubit")
-        if reflex is None:
-            if (ibm_origin[0]+2,ibm_origin[1]-2) not in ibm_qubit_coords:
-                reflex = True
-            else:
-                reflex = False
-        if reflex:
-            own_origin = self.coords[0]
-            for c in self.coords:
-                if c[0] == 0 and c[1] > own_origin[1]:
-                    own_origin = c
-        else:
-            own_origin = self.coords[0]
-        initial_qubit_layout = []
-        for c in self.coords:
-            offset = (int(2*(c[0]-own_origin[0])), int(2*(c[1]-own_origin[1])))
+        if (ibm_origin[0]+1, ibm_origin[1]) in ibm_qubit_coords:
+            if reflex is None:
+                if (ibm_origin[0]+2,ibm_origin[1]-2) not in ibm_qubit_coords:
+                    reflex = True
+                else:
+                    reflex = False
             if reflex:
-                offset = (offset[0],-offset[1])
-            ibm_c = (ibm_origin[0]+offset[0],ibm_origin[1]+offset[1])
-            initial_qubit_layout.append(ibm_qubit_coords.index(ibm_c))
-        return np.array(initial_qubit_layout)
+                own_origin = self.coords[0]
+                for c in self.coords:
+                    if c[0] == 0 and c[1] > own_origin[1]:
+                        own_origin = c
+            else:
+                own_origin = self.coords[0]
+            initial_qubit_layout = []
+            for c in self.coords:
+                offset = (int(2*(c[0]-own_origin[0])), int(2*(c[1]-own_origin[1])))
+                if reflex:
+                    offset = (offset[0],-offset[1])
+                ibm_c = (ibm_origin[0]+offset[0],ibm_origin[1]+offset[1])
+                initial_qubit_layout.append(ibm_qubit_coords.index(ibm_c))
+            return np.array(initial_qubit_layout)
+        else:
+            raise ValueError("Invalid initial qubit")
+    def get_all_layouts(self, backend=None):
+        """Returns a list of all possible mappings from own qubit indices to ibm physical qubits
+        Possible isomorphisms are reflections and 60º rotations
+        Arguments:
+            backend:
+                Device backend
+        """
+        # Gets the new rows and columns after a 60º rotation
+        # A bit cumbersome due to the brick-wall layout instead of regular hexagons
+        def rotated_row(r,c):
+            if r != int(r):
+                return int(c)//2+1+int(r-0.5)//2
+            return [0,0.5,1,1][int(2*r+2*c)%4]+int(r)//2+int(2*(c+r%2))//4
+        def rotated_column(r,c):
+            if r != int(r):
+                return -(int(c)//2)+0.5+3*(int(r-0.5)//2)+2*(int(r-0.5)%2)
+            return [0,0,0,-0.5][int(2*r+2*c)%4]+int(3*r)//2-(int(2*(c-r%2))//4)
+        layouts = []
+        sorted_layouts = []
+        ibm_qubit_coords = HeavyHexLattice.get_backend_coordinates(backends_objs_to_names(backend))
+        for (row_ibm, col_ibm) in ibm_qubit_coords:
+            for dir_col in [1, -1]: # left-right mirroring
+                for dir_row in [1, -1]: # up-down mirroring
+                    layout = []
+                    fits = False
+                    if (row_ibm+dir_row, col_ibm) in ibm_qubit_coords:
+                        if dir_row == -1: # skip up-down mirroring as it is redundant
+                            continue
+                        fits = True
+                        (row_orig, col_orig) = self.coords[0] # Coordinates of qubit 0
+                        for (row_lattice, col_lattice) in self.coords:
+                            offset = (int(2*(row_lattice-row_orig)), int(2*(col_lattice-col_orig)))
+                            ibm_c = (row_ibm+dir_row*offset[0], col_ibm+dir_col*offset[1])
+                            if ibm_c not in ibm_qubit_coords:
+                                fits = False
+                                break
+                            layout.append(ibm_qubit_coords.index(ibm_c))
+                    elif (row_ibm+dir_row, col_ibm+2*dir_col) in ibm_qubit_coords: # 60º rotated layouts
+                        fits = True
+                        (row_orig, col_orig) = self.coords[0] # Coordinates of qubit 0
+                        (row_orig, col_orig) = (rotated_row(row_orig, col_orig), rotated_column(row_orig, col_orig))
+                        for (row_lattice, col_lattice) in self.coords:
+                            (row_lattice, col_lattice) = rotated_row(row_lattice, col_lattice), rotated_column(row_lattice, col_lattice)
+                            offset = (int(2*(row_lattice-row_orig)), int(2*(col_lattice-col_orig)))
+                            ibm_c = (row_ibm+dir_row*offset[0], col_ibm+dir_col*offset[1])
+                            if ibm_c not in ibm_qubit_coords:
+                                fits = False
+                                break
+                            layout.append(ibm_qubit_coords.index(ibm_c))
+                    if fits:
+                        sort = sorted(layout)
+                        # Exclude automorphisms
+                        if sort not in sorted_layouts:
+                            layouts.append(layout)
+                            sorted_layouts.append(sort)
+        return layouts
 
     def __len__(self):
         return len(self.coords)
@@ -211,13 +275,17 @@ class HeavyHexLattice:
             plt.plot(exs, eys, color="black")
         plt.scatter(vertex_x, vertex_y, 350*scale, marker="o", c="white", edgecolors="black", zorder=2)
         plt.scatter(edges_boxes_x, edges_boxes_y, 400*scale, marker=(4, 0, 45), c="white", edgecolors="black", zorder=2)
+        mirror = False
         if number_qubits:
             if backend is None:
                 start = 0 if first_qubit is None else first_qubit
                 labels = [str(start + i) for i in range(len(self.coords))]
             else:
                 backend = backends_objs_to_names(backend)
-                labels = [str(qb) for qb in self.initial_qubit_layout(first_qubit, backend)]
+                initial_layout = self.initial_qubit_layout(first_qubit, backend)
+                labels = [str(qb) for qb in initial_layout]
+                if initial_layout[1] < initial_layout[0]:
+                    mirror = True
             ttransform = mpl.transforms.Affine2D().translate(0, -1*scale)
             for i, (y, x) in enumerate(self.coords):
                 text = plt.text(x, self.max_y - y, labels[i], horizontalalignment="center", verticalalignment="center", fontdict={"size": 5.5*scale})
@@ -228,9 +296,8 @@ class HeavyHexLattice:
             for i, (x, y) in enumerate(zip(edges_boxes_x, edges_boxes_y)):
                 plt.text(x, y, r"$\sigma$", horizontalalignment="center", verticalalignment="center", fontdict={"size": 10*scale, "family":"serif"})
         plt.axis("off")
-        if backend is not None:
-            if backend != 'ibm_fez' and backend != None:
-                ax.invert_xaxis()
+        if mirror:
+            ax.invert_xaxis()
         plt.ylim([-0.2, self.max_y+0.2])
         plt.tight_layout()
         plt.rcdefaults()
