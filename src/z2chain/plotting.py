@@ -39,9 +39,8 @@ def discrepancies_plot(exact_site_gauge_observable_matrix, approximated_site_gau
     if isinstance(approximated_site_gauge_observable_matrix[0], BasePrimitiveJob) or isinstance(approximated_site_gauge_observable_matrix[0], RuntimeJob):
         approximated_site_gauge_observable_matrix = convert_jobs_to_site_gauge_matrix(approximated_site_gauge_observable_matrix)
 
-    max_len = np.min([exact_site_gauge_observable_matrix.shape[0], approximated_site_gauge_observable_matrix.shape[0]])
-    exact_site_gauge_observable_matrix = exact_site_gauge_observable_matrix[:max_len]
-    approximated_site_gauge_observable_matrix = approximated_site_gauge_observable_matrix[:max_len]
+    if exact_site_gauge_observable_matrix.shape != approximated_site_gauge_observable_matrix.shape:
+        raise ValueError("exact_site_gauge_observable_matrix and approximated_site_gauge_observable matrix must be the same shape")
 
     plt.rc("text", usetex=True)
     plt.rc("font", size=24, family="serif", weight="bold")
@@ -57,6 +56,68 @@ def discrepancies_plot(exact_site_gauge_observable_matrix, approximated_site_gau
     cbar.ax.set_ylabel(r"$| \langle n \rangle_{\mathrm{exact}} - \langle n \rangle_{\mathrm{Trotter}} |$", labelpad=10)
     plt.xlabel(r"Sites")
     plt.ylabel("step")
+    plt.tight_layout()
+    if filepath:
+        plt.savefig(filepath, dpi=300, facecolor="none")
+    plt.show()
+    plt.rcdefaults()
+
+def plot_single_qubit_discrepancies(exact_observable_matrix, approximated_observable_matrix, qubit_inds, x_plot=None, x_label=None, filepath=""):
+    if isinstance(exact_observable_matrix[0], BasePrimitiveJob) or isinstance(exact_observable_matrix[0], RuntimeJob):
+        exact_observable_matrix = convert_jobs_to_site_gauge_matrix(exact_observable_matrix)
+    if isinstance(approximated_observable_matrix[0], BasePrimitiveJob) or isinstance(approximated_observable_matrix[0], RuntimeJob):
+        approximated_observable_matrix = convert_jobs_to_site_gauge_matrix(approximated_observable_matrix)
+
+    if exact_observable_matrix.shape != approximated_observable_matrix.shape:
+        raise ValueError("exact_observable_matrix and approximated_observable matrix must be the same shape")
+
+    plt.rc("text", usetex=True)
+    plt.rc("font", size=24, family="serif", weight="bold")
+
+    fig, ax = plt.subplots(1, 1, figsize=[9, 6])
+
+    difference = np.abs(exact_observable_matrix - approximated_observable_matrix)
+
+    cmap = plt.get_cmap("Set2")
+    if x_plot is None:
+        x_plot = np.arange(0, exact_observable_matrix.shape[0])
+    for i, qbind in enumerate(qubit_inds):
+        color = cmap((i % 8)/8 + 0.01)
+        plt.plot(x_plot, difference[:, qbind], "o--", markersize=12, markeredgecolor="black", color=color, label=f"Qb: {qbind}")
+    plt.xlabel("Step" if x_label is None else x_label, labelpad=10)
+    plt.ylabel(r"$|\langle O \rangle_{\mathrm{Exact}} - \langle O \rangle_{\mathrm{Trotter}}|$", labelpad=10)
+    plt.legend(prop={"size": 18})
+    plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
+    plt.yscale("log")
+    plt.tight_layout()
+    if filepath:
+        plt.savefig(filepath, dpi=300, facecolor="none")
+    plt.show()
+    plt.rcdefaults()
+
+def plot_average_discrepancy(exact_observable_matrix, approximated_observable_matrix, x_plot=None, x_label=None, filepath=""):
+    if isinstance(exact_observable_matrix[0], BasePrimitiveJob) or isinstance(exact_observable_matrix[0], RuntimeJob):
+        exact_observable_matrix = convert_jobs_to_site_gauge_matrix(exact_observable_matrix)
+    if isinstance(approximated_observable_matrix[0], BasePrimitiveJob) or isinstance(approximated_observable_matrix[0], RuntimeJob):
+        approximated_observable_matrix = convert_jobs_to_site_gauge_matrix(approximated_observable_matrix)
+
+    if exact_observable_matrix.shape != approximated_observable_matrix.shape:
+        raise ValueError("exact_observable_matrix and approximated_observable matrix must be the same shape")
+
+    plt.rc("text", usetex=True)
+    plt.rc("font", size=24, family="serif", weight="bold")
+
+    fig, ax = plt.subplots(1, 1, figsize=[9, 6])
+
+    difference = np.abs(exact_observable_matrix - approximated_observable_matrix)
+    mean_difference = difference.mean(axis=1)
+    
+    cmap = plt.get_cmap("Set2")
+    plt.plot(x_plot, mean_difference, "o--", markersize=12, markeredgecolor="black", color=cmap(0))
+    plt.xlabel("Step" if x_label is None else x_label, labelpad=10)
+    plt.ylabel(r"$|\langle O \rangle_{\mathrm{Exact}} - \langle O \rangle_{\mathrm{Trotter}}|$", labelpad=10)
+    plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
+    plt.yscale("log")
     plt.tight_layout()
     if filepath:
         plt.savefig(filepath, dpi=300, facecolor="none")
