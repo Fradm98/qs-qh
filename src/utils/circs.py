@@ -18,12 +18,7 @@ def remove_idle_qwires(circ, relabeling=None):
 
     idle_wires = list(dag.idle_wires())
     num_non_idle = dag.num_qubits() - len(idle_wires)
-    for w in idle_wires:
-        dag._remove_idle_wire(w)
-        dag.qubits.remove(w)
-
-    for qreg in dag.qregs.values():
-        dag.remove_qregs(qreg)
+    dag.remove_qubits(*idle_wires)
 
     layout = circ.layout.final_index_layout() if circ.layout is not None else list(range(num_non_idle))
     qubits_to_apply = list(np.argsort(layout))
