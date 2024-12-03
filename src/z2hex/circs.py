@@ -42,51 +42,51 @@ class TotalInteractionPropagator(QuantumCircuit):
         schedule = [(0,-0.5),(-0.5,0),(0,0.5)]
         schedule_downwards = [(0.5,0),(0,-0.5),(0,0.5)]
         for i in range(7):
-            for i in range(7):
-                if i == 3:
-                    if x_basis:
-                        self.rz(-2*t_lamb, gauge_qubits)
-                    else:
-                        self.rx(-2*t_lamb, gauge_qubits)
+            if i == 3:
+                if x_basis:
+                    self.rz(-2*t_lamb, gauge_qubits)
                 else:
-                    typ = 6-i if i > 3 else i
-                    for v in lattice.vertices.values():
-                        this_schedule = schedule_downwards[typ] if v.downwards else schedule[typ]
-                        ec = (v.coords[0] + this_schedule[0], v.coords[1] + this_schedule[1])
-                        if ec in lattice.edges:
-                            if x_basis:
-                                self.cx(v.qubit, lattice.edges[ec].qubit)
-                            else:
-                                self.cx(lattice.edges[ec].qubit, v.qubit)
+                    self.rx(-2*t_lamb, gauge_qubits)
+            else:
+                typ = 6-i if i > 3 else i
+                for v in lattice.vertices.values():
+                    this_schedule = schedule_downwards[typ] if v.downwards else schedule[typ]
+                    ec = (v.coords[0] + this_schedule[0], v.coords[1] + this_schedule[1])
+                    if ec in lattice.edges:
+                        if x_basis:
+                            self.cx(v.qubit, lattice.edges[ec].qubit)
+                        else:
+                            self.cx(lattice.edges[ec].qubit, v.qubit)
 
 class TotalInteractionPropagatorDD(QuantumCircuit):
-    def __init__(self, lattice, x_basis=False):
+    def __init__(self, lattice, t_g, x_basis=False):
         super().__init__(len(lattice))
         t_lamb = Parameter("t_λ")
-        t_g = Parameter("t_g")
         gauge_qubits = [link.qubit for link in lattice.edges.values()]
         matter_qubits = [node.qubit for node in lattice.vertices.values()]
         schedule = [(0,-0.5),(-0.5,0),(0,0.5)]
         schedule_downwards = [(0.5,0),(0,-0.5),(0,0.5)]
+        random_times = np.random.uniform(0, t_g, len(matter_qubits))
         for i in range(7):
-            for i in range(7):
-                if i == 3:
-                    if x_basis:
-                        self.rz(-2*t_lamb, gauge_qubits)
-                        self.rx(-2*t_g, matter_qubits)
-                    else:
-                        self.rx(-2*t_lamb, gauge_qubits)
-                        self.rz(-2*t_g, matter_qubits)
+            if i == 3:
+                if x_basis:
+                    self.rz(-2*t_lamb, gauge_qubits)
+                    for i, qind in enumerate(matter_qubits):
+                        self.rx(-2*random_times[i], qind)
                 else:
-                    typ = 6-i if i > 3 else i
-                    for v in lattice.vertices.values():
-                        this_schedule = schedule_downwards[typ] if v.downwards else schedule[typ]
-                        ec = (v.coords[0] + this_schedule[0], v.coords[1] + this_schedule[1])
-                        if ec in lattice.edges:
-                            if x_basis:
-                                self.cx(v.qubit, lattice.edges[ec].qubit)
-                            else:
-                                self.cx(lattice.edges[ec].qubit, v.qubit)
+                    self.rx(-2*t_lamb, gauge_qubits)
+                    for i, qind in enumerate(matter_qubits):
+                        self.rz(-2*random_times[i], qind)
+            else:
+                typ = 6-i if i > 3 else i
+                for v in lattice.vertices.values():
+                    this_schedule = schedule_downwards[typ] if v.downwards else schedule[typ]
+                    ec = (v.coords[0] + this_schedule[0], v.coords[1] + this_schedule[1])
+                    if ec in lattice.edges:
+                        if x_basis:
+                            self.cx(v.qubit, lattice.edges[ec].qubit)
+                        else:
+                            self.cx(lattice.edges[ec].qubit, v.qubit)
 
 def SecondOrderTrotter(lattice, J, h, lamb, t_total, layers, g=None, x_basis=False, barriers=False):
     t_layer = t_total / layers
@@ -94,9 +94,9 @@ def SecondOrderTrotter(lattice, J, h, lamb, t_total, layers, g=None, x_basis=Fal
         total_interaction_propagator = TotalInteractionPropagator(lattice, x_basis).decompose()
         total_interaction_propagator.assign_parameters([lamb*t_layer], inplace=True)
     else:
-        total_interaction_propagator = TotalInteractionPropagatorDD(lattice, x_basis)
-        total_interaction_propagator.assign_parameters([g*t_layer, lamb*t_layer], inplace=True)
-    total_single_body_propagator = TotalInteractionPropagatorDD(lattice, x_basis)
+        total_interaction_propagator = TotalInteractionPropagatorDD(lattice, g*t_layer, x_basis)
+        total_interaction_propagator.assign_parameters([lamb*t_layer], inplace=True)
+    total_single_body_propagator = TotalSingleBodyPropagator(lattice, x_basis)
     total_single_body_propagator.assign_parameters([h*t_layer/2, t_layer*J/2], inplace=True)
     layer = total_single_body_propagator.compose(total_interaction_propagator).compose(total_single_body_propagator)
     if barriers: layer.barrier()
