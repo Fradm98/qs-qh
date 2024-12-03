@@ -51,6 +51,14 @@ class ExecDB:
             if batch["id"] == id:
                 return i
         raise ValueError(f"No batch found with id: {id}")
+    
+    def _search_batch_index_by_data(self, data):
+        for i, batch in enumerate(self._data):
+            batch_without_id = batch.copy()
+            del batch_without_id["id"]
+            if batch_without_id == data:
+                return i
+        raise ValueError("No batch found with the provided data")
 
     def search_by_params(self, batch_args, physical_circuits, observable_func_name, strict_depth=True, ibmq_service=None, limit=10):
         indices = self._search_batches_indices_by_params(batch_args, physical_circuits, observable_func_name, strict_depth, limit)
@@ -73,11 +81,19 @@ class ExecDB:
             job_ids = [job["job_id"] for job in data["jobs"]]
             job_objs =  [ibmq_service.job(job_id=job_id) for job_id in job_ids]
             return job_objs
+
+    def seach_by_data(self, data, ibmq_service=None):
+        data = self._search_batch_index_by_data(data)
+        if ibmq_service is None:
+            return data
+        else:
+            job_ids = [job["job_id"] for job in data["jobs"]]
+            job_objs =  [ibmq_service.job(job_id=job_id) for job_id in job_ids]
+            return job_objs
     
-    def add(self, batch_args, physical_circuits, observable_generating_func_name, job_ids_arr):
-        thisid = 0 if len(self._data) == 0 else self._data[-1]["id"] + 1
-        data_to_add = {"id": thisid}
-        data_to_add = data_to_add | batch_args
+    @classmethod
+    def generate_batch_db_data(cls, batch_args, physical_circuits, observable_generating_func_name, job_ids_arr):
+        data_to_add = batch_args
         data_to_add["nqubits_arr"] = sorted(list({len(physical_circuit.layout.final_index_layout()) for physical_circuit in physical_circuits}))
         data_to_add["depths_arr"] = sorted(list({physical_circuit.depth() for physical_circuit in physical_circuits}))
         if callable(observable_generating_func_name):
@@ -85,6 +101,23 @@ class ExecDB:
         else:
             data_to_add["observables_func_name"] = str(observable_generating_func_name)
         data_to_add["jobs"] = [{"job_id": jid, "nqubits": len(physical_circuit.layout.final_index_layout()), "depth": physical_circuit.depth(), "layout": physical_circuit.layout.final_index_layout()} for jid, physical_circuit in zip(job_ids_arr, physical_circuits)]
+        return data_to_add
+    
+    def add(self, batch_args, physical_circuits, observable_generating_func_name, job_ids_arr):
+        thisid = 0 if len(self._data) == 0 else self._data[-1]["id"] + 1
+        data_to_add = {"id": thisid}
+        data_to_add = data_to_add | self.generate_batch_db_data(batch_args, physical_circuits, observable_generating_func_name, job_ids_arr)
+        self._data.append(data_to_add)
+        self.save()
+
+    def add_data(self, data):
+        thisid = 0 if len(self._data) == 0 else self._data[-1]["id"] + 1
+        data_contains_id = data.get("id", False)
+        if data_contains_id:
+            data_to_add = data.copy()
+            data_to_add["id"] = thisid
+        else:
+            data_to_add = {"id": thisid} | data
         self._data.append(data_to_add)
         self.save()
 
