@@ -311,7 +311,9 @@ class CZ:
             return phases
 
     def __repr__(self):
-        indices = f"({", ".join([str(ctrlind) for ctrlind in self.ctrl])}), ({", ".join([str(trgtind) for trgtind in self.target])})"
+        ctrl_indices = ", ".join([str(ctrlind) for ctrlind in self.ctrl])
+        target_indices = ", ".join([str(trgtind) for trgtind in self.target])
+        indices = f"({ctrl_indices}), ({target_indices})"
         return f"CZ[{indices}]"
 
 class InstructionList:
@@ -642,7 +644,7 @@ def initialize_postselection(nqubits, postselects_generating_func, observable_ge
             non_diagonal_observables.append(observable)
     return postselection_ops, diagonal_observables, non_diagonal_observables, basis
 
-def execute_postselected_sampler_batch(backend, sampler_opt_dict, transpiled_circuits, postselects_generating_func, observable_generating_funcs, odr_circuits=None, extra_options=None, job_db=None, max_shots=100000):
+def execute_postselected_sampler_batch(backend, sampler_opt_dict, transpiled_circuits, postselects_generating_func, observable_generating_funcs, odr_circuits=None, extra_options=None, job_db=None, max_shots=75000):
     # TODO: This only works for our particular case
     nqubits = np.max([count_non_idle_qubits(circ) for circ in transpiled_circuits])
     postselection_ops, diagonal_observables, non_diagonal_observables, basis = initialize_postselection(nqubits, postselects_generating_func, observable_generating_funcs)
@@ -662,8 +664,14 @@ def execute_postselected_sampler_batch(backend, sampler_opt_dict, transpiled_cir
     if (shots := sampler_opt_dict.get("default_shots", 0)) > max_shots:
         nrepetitions = shots // max_shots + 1
         last_rep_shots = shots % max_shots
-        sampler_options = [sampler_opt_dict]*nrepetitions
-        sampler_options[-1]["default_shots"] = last_rep_shots
+        sampler_options = []
+        for i in range(nrepetitions):
+            this_options = sampler_opt_dict.copy()
+            if i == nrepetitions-1:
+                this_options["default_shots"] = last_rep_shots
+            else:
+                this_options["default_shots"] = max_shots
+            sampler_options.append(this_options)
     else:
         sampler_options = [sampler_opt_dict]
 
@@ -962,7 +970,8 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
                 combined_odr_samples_dict = combine_samples_dicts(*this_circ_odr_samples_dict)
                 odr_samples_dicts[i] = combined_odr_samples_dict
     real_samples_dicts = real_samples_dicts[:len(transpiled_circuits)]
-    odr_samples_dicts = odr_samples_dicts[:len(transpiled_circuits)]
+    if odr_circuits is not None:
+        odr_samples_dicts = odr_samples_dicts[:len(transpiled_circuits)]
 
     for i, real_samples_dict in enumerate(real_samples_dicts):
         if odr_circuits is not None:
