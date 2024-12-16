@@ -205,13 +205,22 @@ def execute_estimator_batch(backend, estimator_opt_dict, transpiled_circuits, ob
 
     return job_objs
 
-def execute_sampler_batch(backend, sampler_opt_dicts, transpiled_circuits, job_db=None):
+def execute_sampler_batch(backend, sampler_opt_dicts, transpiled_circuits, extra_circuits=None, extra_sampler_opts_dict_ind=0, job_db=None):
     if type(sampler_opt_dicts) not in [list, tuple]:
         sampler_opt_dicts = [sampler_opt_dicts]
+    if type(transpiled_circuits) not in [list, tuple]:
+        transpiled_circuits = [transpiled_circuits]
+    if (extra_circuits is not None) and (type(extra_circuits) not in [list, tuple]):
+        extra_circuits = [extra_circuits]
     
     job_objs = []
 
     with Batch(backend=backend) as batch:
+        if extra_circuits is not None:
+            sampler = SamplerV2(mode=batch, options=sampler_opt_dicts[extra_sampler_opts_dict_ind])
+            for circ in extra_circuits:
+                this_circ = check_and_measure_active_qubits(circ)
+                job_objs.append(sampler.run([this_circ]))
         for sampler_opt_dict in sampler_opt_dicts:
             sampler = SamplerV2(mode=batch, options=sampler_opt_dict)
             for circ in transpiled_circuits:
@@ -220,7 +229,7 @@ def execute_sampler_batch(backend, sampler_opt_dicts, transpiled_circuits, job_d
 
     if job_db is not None:
         job_ids = [job.job_id() for job in job_objs]
-        job_db.add(sampler_opt_dict, transpiled_circuits, "Sampler", job_ids)
+        job_db.add(sampler_opt_dicts[0], transpiled_circuits, "Sampler", job_ids)
 
     return job_objs
 
