@@ -196,3 +196,26 @@ def plot_nflips_comparison(samples_dicts, postselection_operators, g_arr, circs_
         plt.savefig(filepath, dpi=300, facecolor="none")
     plt.show()
     plt.rcdefaults()
+
+def plot_circuit_arr_depth(circuit_arr, x_ticks=None, x_label=None, filepath=""):
+    plt.rc("text", usetex=True)
+    plt.rc("font", size=20, family="serif", weight="bold")
+
+    fig, ax = plt.subplots(figsize=[9, 6])
+    
+    if x_ticks is None:
+        x_ticks = np.arange(1, len(circuit_arr)+1)
+    y = [depth2qb(circ) for circ in circuit_arr]
+    color = plt.get_cmap("Set2")((1 % 8)/8 + 0.01)
+    plt.plot(x_ticks, y, "o--", markersize=12, markeredgecolor="black", color=color)
+    if x_label is None:
+        plt.xlabel("Circuit index", labelpad=10)
+    else:
+        plt.xlabel(x_label, labelpad=10)
+    plt.ylabel("Depth")
+    plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
+    plt.tight_layout()
+    if filepath:
+        plt.savefig(filepath, dpi=300, facecolor="none")
+    plt.show()
+    plt.rcdefaults()
