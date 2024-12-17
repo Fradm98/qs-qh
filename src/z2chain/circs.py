@@ -236,7 +236,7 @@ def nlayers_trotter(t, epsilon, chain_length, J, h, lamb):
     return t*(4*np.abs(J**2*lamb)/3 + 2*np.abs(J*h*lamb)/3+(h**2*lamb)/3+np.abs(J*lamb**2)/3+np.abs(h*lamb**2)/6)*(chain_length-1)/epsilon**(1/3)
 
 def error_trotter2(t, nlayers, chain_length, J, h, lamb):
-    return t**3/12/nlayers**3*(4/3*np.abs(J**2*lamb) + 2/3*np.abs(J*h*lamb) + 1/3*np.abs(h**2*lamb) + 1/3*np.abs(h*lamb**2) + 1/6*np.abs(h*lamb**2))*(chain_length - 1)
+    return t**3/12/nlayers**3*(4/3*np.abs(J**2*lamb) + 2/3*np.abs(J*h*lamb) + 1/3*np.abs(J*lamb**2) + 4/6*np.abs(h*lamb**2))*(chain_length - 1)
 
 def get_erradj_number_of_trotter_layers(times, layer_error, chain_length, J, h, lamb, max_layers=50):
     times_matrix = np.repeat(times, max_layers).reshape(len(times), max_layers)

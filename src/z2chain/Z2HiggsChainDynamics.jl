@@ -110,13 +110,3 @@ module Z2HiggsChainDynamics
         return site_gauge_observable_matrix
     end
 end
-
-function main()
-    sites = Z2HiggsChainDynanics.chain_sites(5)
-    observables = Z2HiggsChainDynanics.all_local_pauli_z(sites)
-    res = Z2HiggsChainDynanics.particle_pair_quench_simulation(sites, observables, 1, 1, 0, 2, 1, 5, 100, 1e-3, filepath="test.npy")
-end
-
-if ~isinteractive()
-    main()
-end

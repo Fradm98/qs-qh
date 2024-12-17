@@ -1,9 +1,10 @@
 # Contributor: César Benito Lamata @cesarBLG
 
-from qiskit.transpiler.passes import Optimize1qGates, SetLayout, ApplyLayout, FullAncillaAllocation, Optimize1qGatesDecomposition, Optimize1qGatesSimpleCommutation
+from qiskit.transpiler.passes import Optimize1qGates, SetLayout, ApplyLayout, FullAncillaAllocation, Optimize1qGatesDecomposition, Optimize1qGatesSimpleCommutation, ALAPScheduleAnalysis, PadDelay
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit.transpiler import PassManager, StagedPassManager, Layout
 from qiskit.circuit import QuantumCircuit, Parameter
+from utils.hexec import backends_objs_to_names
 from utils.circs import remove_idle_qwires
 import numpy as np
 
@@ -110,7 +111,7 @@ def get_erradj_number_of_trotter_layers(times, eplg_absolute, trotter_order, max
     times_matrix = np.repeat(times, max_layers).reshape(len(times), max_layers)
     layers_arr = np.arange(1, max_layers + 1)
     error_trotter = (times_matrix/layers_arr)**(trotter_order + 1)
-    error_hardware = 1 - (1-eplg_absolute)**(6*layers_arr)
+    error_hardware = 1 - (1-eplg_absolute)**(layers_arr)
     error_total = error_trotter + error_hardware
     return np.argmin(error_total, axis=1) + 1
 
@@ -149,30 +150,84 @@ def physical_string_quench_simulation_circuits(lattice, J, h, lamb, string_qubit
         circs_to_return.append(this_circuit)
     return circs_to_return
 
-def get_erradj_string_quench_simulation_circuits(lattice, J, h, lamb, string_qubits, final_time, steps, backend, optimization_level, eplg_absolute, g=None, layout_first_qubit=None, x_basis=False, barriers=False):
-    layout = lattice.initial_qubit_layout(layout_first_qubit, backend)
-    t_arr = np.linspace(0, final_time, steps)
-    nlayers_arr = get_erradj_number_of_trotter_layers(t_arr, eplg_absolute, trotter_order=2)
+def erradj_string_quench_simulation_circuits_eplg(lattice, J, h, lamb, string_qubits, final_time, steps, backend, optimization_level, eplg_absolute, g=None, layout_first_qubit=None, x_basis=False, force_even=True, max_layers=50, barriers=False):
+    backend_name = backends_objs_to_names(backend)
+    if "aer_simulator" in backend_name:
+        layout = np.arange(len(lattice))
+    else:
+        layout = lattice.initial_qubit_layout(layout_first_qubit, backend)
+    t_arr = np.linspace(0, final_time, steps+1)
+    nlayers_arr = get_erradj_number_of_trotter_layers(t_arr, eplg_absolute, trotter_order=2, max_layers=max_layers)
+    if force_even:
+        odd_layers = ~np.equal(nlayers_arr % 2, 0)
+        nlayers_arr[odd_layers] = nlayers_arr[odd_layers] + 1
     t_perlayer_arr = t_arr / nlayers_arr
-    initial_pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=layout)
     state_preparation_logical_circ = StringInitialStateCirc(lattice, string_qubits, x_basis)
-    state_preparation_physical_circ = initial_pm.run(state_preparation_logical_circ)
+    trotter_pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=layout)
+    state_preparation_physical_circ = trotter_pm.run(state_preparation_logical_circ)
+    try:
+        if (fractional_gates := backend.options.use_fractional_gates):
+            sched_pm = PassManager([ALAPScheduleAnalysis(backend.instruction_durations), PadDelay(backend.instruction_durations)])
+    except AttributeError:
+        fractional_gates = False
     measured_state_preparation_circuit = QuantumCircuit(len(lattice), len(lattice))
     measured_state_preparation_circuit = measured_state_preparation_circuit.compose(state_preparation_logical_circ)
-    state_preparation_physical_circ = initial_pm.run(measured_state_preparation_circuit)
+    state_preparation_physical_circ = trotter_pm.run(measured_state_preparation_circuit)
     measured_state_preparation_physical_circ = state_preparation_physical_circ.copy()
     measured_state_preparation_physical_circ.measure(layout[np.argsort(layout)], np.argsort(layout[np.argsort(layout)]))
+    if fractional_gates:
+        measured_state_preparation_physical_circ = sched_pm.run(measured_state_preparation_physical_circ)
     circs_to_return = [measured_state_preparation_physical_circ]
-    for i in range(steps-1):
+    sqcancel_pm = PassManager([Optimize1qGates(target=backend.target), Optimize1qGatesDecomposition(target=backend.target), Optimize1qGatesSimpleCommutation(target=backend.target)])
+    for i in range(steps):
         this_trotter_layer_logical_circuit = SecondOrderTrotter(lattice, J, h, lamb, t_perlayer_arr[i+1], 1, g=g, x_basis=x_basis, barriers=barriers)
-        this_trotter_layer_physical_circuit = initial_pm.run(this_trotter_layer_logical_circuit)
-        state_preparation_physical_circ = initial_pm.run(state_preparation_logical_circ)
+        this_trotter_layer_physical_circuit = trotter_pm.run(this_trotter_layer_logical_circuit)
+        state_preparation_physical_circ = trotter_pm.run(state_preparation_logical_circ)
         this_time_physical_circuit = state_preparation_physical_circ.compose(this_trotter_layer_physical_circuit.repeat(nlayers_arr[i+1])).decompose()
         this_time_physical_circuit = remove_idle_qwires(this_time_physical_circuit, relabeling=np.arange(len(layout))[np.argsort(layout)])
         layout_dict = {layout[i]:this_time_physical_circuit.qubits[i] for i in range(this_time_physical_circuit.num_qubits)}
         layout_pm = PassManager([SetLayout(layout=Layout(layout_dict)), FullAncillaAllocation(coupling_map=backend.target), ApplyLayout()])
-        sqcancel_pm = PassManager([Optimize1qGates(target=backend.target), Optimize1qGatesDecomposition(target=backend.target), Optimize1qGatesSimpleCommutation(target=backend.target)])
         sqopt_pm = StagedPassManager(stages=["optimization", "layout"], layout=layout_pm, optimization=sqcancel_pm)
         this_time_physical_circuit = sqopt_pm.run(this_time_physical_circuit)
         circs_to_return.append(this_time_physical_circuit)
+    return circs_to_return
+
+def odr_compuncomp_circuits_eplg(lattice, J, h, lamb, final_time, steps, backend, eplg_absoulte, g=None, string_qubits=None, layout_first_qubit=None, x_basis=False, barriers=False, max_layers=50):
+    backend_name = backends_objs_to_names(backend)
+    if "aer_simulator" in backend_name:
+        layout = np.arange(len(lattice))
+    else:
+        layout = lattice.initial_qubit_layout(layout_first_qubit, backend)
+    t_arr = np.linspace(0, final_time, steps+1)
+    nlayers_arr = get_erradj_number_of_trotter_layers(t_arr, eplg_absoulte, trotter_order=2, max_layers=max_layers)
+    odd_layers = ~np.equal(nlayers_arr % 2, 0)
+    nlayers_arr[odd_layers] = nlayers_arr[odd_layers] + 1
+    t_perlayer_arr = t_arr / nlayers_arr
+    trotter_pm = generate_preset_pass_manager(optimization_level=0, backend=backend, initial_layout=layout)
+    if string_qubits is None:
+        first_circuit = QuantumCircuit(len(lattice))
+        first_circuit.measure_all()
+        first_physical_circuit = trotter_pm.run(first_circuit)
+    else:
+        first_circuit = StringInitialStateCirc(lattice, string_qubits, x_basis)
+        first_physical_circuit = QuantumCircuit(len(lattice), len(lattice))
+        first_physical_circuit.compose(first_physical_circuit)
+        first_physical_circuit = trotter_pm.run(first_physical_circuit)
+        final_index_layout = first_physical_circuit.layout.final_index_layout()
+        first_physical_circuit.measure(np.array(final_index_layout)[np.argsort(final_index_layout)], np.argsort(np.array(final_index_layout)[np.argsort(final_index_layout)]))
+    circs_to_return = [first_physical_circuit]
+    sqcancel_pm = PassManager([Optimize1qGates(target=backend.target), Optimize1qGatesDecomposition(target=backend.target), Optimize1qGatesSimpleCommutation(target=backend.target)])
+    for i in range(steps):
+        forwards_trotter_layer = SecondOrderTrotter(lattice, J, h, lamb, t_perlayer_arr[i+1], 1, g, x_basis, barriers)
+        backwards_trotter_layer = SecondOrderTrotter(lattice, J, h, lamb, -t_perlayer_arr[i+1], 1, g, x_basis, barriers)
+        forwards_physical_trotter_layer = trotter_pm.run(forwards_trotter_layer)
+        backwards_physical_trotter_layer = trotter_pm.run(backwards_trotter_layer)
+        this_time_circuit = forwards_physical_trotter_layer.repeat(nlayers_arr[i+1]//2)
+        this_time_circuit = this_time_circuit.compose(backwards_physical_trotter_layer.repeat(nlayers_arr[i+1]//2)).decompose()
+        this_time_circuit = remove_idle_qwires(this_time_circuit, relabeling=np.arange(len(layout))[np.argsort(layout)])
+        layout_dict = {layout[i]:this_time_circuit.qubits[i] for i in range(this_time_circuit.num_qubits)}
+        layout_pm = PassManager([SetLayout(layout=Layout(layout_dict)), FullAncillaAllocation(coupling_map=backend.target), ApplyLayout()])
+        sqopt_pm = StagedPassManager(stages=["optimization", "layout"], layout=layout_pm, optimization=sqcancel_pm)
+        this_time_circuit = sqopt_pm.run(this_time_circuit)
+        circs_to_return.append(this_time_circuit)
     return circs_to_return

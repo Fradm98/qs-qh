@@ -1,3 +1,4 @@
+from utils.postselection import initialize_postselection, measure_diagonal_observables, get_recovered_postselected_samples_dict
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit.transpiler.passmanager import PassManager
 from qiskit.transpiler.passes import RemoveBarriers
@@ -45,7 +46,7 @@ class BenchmarkDB():
         if self.changed_permissions:
             subprocess.run(["sudo", "-S", "chown", "root:wheel", self.path], input=f"{self.password}\n", text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    def execute(self, nqubits_arr, depths_arr, devices_arr, service, logical_circuit_generating_func, observable_generating_func, estimator_opt_dicts, test_circuit_name=None, observable_name=None, optimization_level=2):
+    def execute_estimator(self, nqubits_arr, depths_arr, devices_arr, service, logical_circuit_generating_func, observable_generating_func, estimator_opt_dicts, test_circuit_name=None, observable_name=None, optimization_level=2):
         nqubits_arr = check_and_convert_to_unique_list(nqubits_arr)
         depths_arr = check_and_convert_to_unique_list(depths_arr)
         
@@ -92,6 +93,57 @@ class BenchmarkDB():
         self._data.append(data_to_add)
         self.save()
 
+    def execute_sampler(self, nqubits_arr, depths_arr, devices_arr, service, logical_circuit_generating_func, sampler_opt_dicts, test_circuit_name=None, layout=None, optimization_level=3):
+        nqubits_arr = check_and_convert_to_unique_list(nqubits_arr)
+        depths_arr = check_and_convert_to_unique_list(depths_arr)
+
+        # Call the backends from the device list
+        backends_arr = [service.backend(device) for device in devices_arr]
+        try:
+            backends_arr = list(backends_arr)
+        except TypeError:
+            backends_arr = [backends_arr]
+
+        # Create the circuits to run
+        circuits = []
+        for nqubits in nqubits_arr:
+            for depth in depths_arr:
+                circuits.append(logical_circuit_generating_func(nqubits, depth))
+
+        # Populate database with general information
+        thisid = 0 if len(self._data) == 0 else self._data[-1]["id"] + 1
+        data_to_add = {"id": thisid, "nqubits_arr": sorted(list(nqubits_arr)), "depth_arr": sorted(list(depths_arr))}
+        data_to_add["backends"] = sorted([backend.name for backend in backends_arr])
+        data_to_add["test_circuit_name"] = test_circuit_name if test_circuit_name is not None else logical_circuit_generating_func.__name__
+        data_to_add["observable_func_name"] = "Sampler"
+        data_to_add["jobs"] = {}
+
+        # Run the jobs and populate job-specific available information
+        for backend in backends_arr:
+            data_to_add["jobs"][backend.name] = []
+            this_physical_circuits = []
+            for i, nqubits in enumerate(nqubits_arr):
+                this_layout = layout[:nqubits] if layout is not None else None
+                pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=this_layout)
+                for j, depth in enumerate(depths_arr):
+                    this_physical_circuits.append(pm.run(circuits[i*len(depths_arr) + j]))
+            for sampler_opt_dict in sampler_opt_dicts:
+                this_jobs_arr = hexec.execute_sampler_batch(backend, sampler_opt_dict, this_physical_circuits)
+                this_backend_list = [{
+                    "job_id": job.job_id(),
+                    "nqubits": nqubits,
+                    "depth": depth,
+                    "creation_time": job.metrics()["timestamps"]["created"],
+                    "execution_time": None,
+                    "samples": None,
+                    "estimator_opt_dict": sampler_opt_dict,
+                    "layout": this_physical_circuits[i].layout.final_index_layout()
+                } for i, (job, (nqubits, depth)) in enumerate(zip(this_jobs_arr, product(nqubits_arr, depths_arr)))]
+                data_to_add["jobs"][backend.name] += this_backend_list
+        
+        self._data.append(data_to_add)
+        self.save()
+
     def update_status(self, service, check_all=False, print_mode=False):
         for tn, test in enumerate(self._data[::-1]):
             one_to_be_completed = False
@@ -104,7 +156,10 @@ class BenchmarkDB():
                         if job.in_final_state():
                             job_dict["execution_time"] = job.metrics()["timestamps"]["finished"]
                             if job.status() == "DONE":
-                                job_dict["ev"] = float(job.result()[0].data.evs[0])
+                                if test["observable_func_name"] == "Sampler":
+                                    job_dict["samples"] = list(job.result()[0].data.values())[0].get_counts()
+                                else:
+                                    job_dict["ev"] = float(job.result()[0].data.evs[0])
             self.save()
             if (not one_to_be_completed) and (not check_all):
                 break
@@ -185,12 +240,12 @@ class BenchmarkDB():
         ind = self._search_batch_index_by_id(id)
         return self._data[ind]
 
-    def plot_mean_error_by_date(self, nqubits_arr, depths_arr, backends_arr, estimator_opt_dicts, logical_circuit_generating_func, observable_generating_func, test_circuit_name=None, observable_name=None, date_range=None, simulator_max_bond_dimension=256, simulation_results_folder_path=None, plot_filepath=None, print_mode=False):
+    def plot_mean_error_by_date_estimator(self, nqubits_arr, depths_arr, backends_arr, estimator_opt_dicts, logical_circuit_generating_func, observable_generating_func, test_circuit_name=None, observable_name=None, date_range=None, simulator_max_bond_dimension=256, simulation_results_folder_path=None, plot_filepath=None, print_mode=False):
         # Create and optimize the circuits to run (For performance reasons, the result will be the same for the simulator)
         nqubits_arr = set(nqubits_arr)
         depths_arr = set(depths_arr)
         barrier_pm = PassManager([RemoveBarriers()])
-        pm = generate_preset_pass_manager(optimization_level=2)
+        pm = generate_preset_pass_manager(optimization_level=3)
         circuits = []
         simulator_optimized_circuits = []
         for nqubits in nqubits_arr:
@@ -261,6 +316,100 @@ class BenchmarkDB():
                         date_locator = pltdates.AutoDateLocator()
                         date_formatter = pltdates.ConciseDateFormatter(date_locator, formats=['%Y', '%d/%b', '%d/%b', '%H:%M', '%H:%M', '%S.%f'], offset_formats=['', '%Y', '%b/%Y', '%d-%b-%Y', '%d/%b/%Y', '%d/%b/%Y %H:%M'])
                         axs[i+j+k*njobs].plot(measurement_dates[(nqubits, depth, estimator_opt_dict_str)][backend_name], errors, "o-", linewidth=2, markersize=8, label=backend_name)
+                        axs[i+j+k*njobs].xaxis.set_major_locator(date_locator)
+                        axs[i+j+k*njobs].xaxis.set_major_formatter(date_formatter)
+                        axs[i+j+k*njobs].tick_params(axis="x", rotation=45,) #ha="right")
+                        axs[i+j+k*njobs].set_ylabel("Error")
+                        axs[i+j+k*njobs].set_title(f"Qubits: {nqubits} / Depth: {depth} / Options: {k + 1}")
+                        axs[i+j+k*njobs].legend()
+                        axs[i+j+k*njobs].grid()
+        plt.tight_layout()
+        if plot_filepath is not None:
+            plt.savefig(plot_filepath, dpi=300, facecolor="none")
+
+    def plot_postselected_error_by_date(self, nqubits_arr, depths_arr, backends_arr, sampler_opt_dicts, logical_circuit_generating_func, postselect_generating_func, observable_generating_func, test_circuit_name=None, date_range=None, flip_threshold=None, simulator_max_bond_dimension=256, simulation_results_folder_path=None, plot_filepath=None, print_mode=False):
+        # Create and optimize the circuits to run (For performance reasons, the result will be the same for the simulator)
+        nqubits_arr = set(nqubits_arr)
+        depths_arr = set(depths_arr)
+        barrier_pm = PassManager([RemoveBarriers()])
+        pm = generate_preset_pass_manager(optimization_level=3)
+        circuits = []
+        simulator_optimized_circuits = []
+        for nqubits in nqubits_arr:
+            for depth in depths_arr:
+                if print_mode: print(f"\rGenerating circuits / nqubits: {nqubits} / depth: {depth}".ljust(100), end="")
+                circuits.append(this_circuit := logical_circuit_generating_func(nqubits, depth))
+                this_opt_circuit = pm.run(barrier_pm.run(this_circuit))
+                simulator_optimized_circuits.append(this_opt_circuit)
+        
+        # Simulate the circuits
+        perfect_evs = []
+        for sampler_opt_dict in sampler_opt_dicts:
+            estimator_options = {"default_precision": 0}
+            simulator_options = {
+                "method": "matrix_product_state",
+                "matrix_product_state_max_bond_dimension": simulator_max_bond_dimension,
+                "matrix_product_state_truncation_threshold": 1e-10
+            }
+            physical_circuit_name = logical_circuit_generating_func.__name__ if test_circuit_name is None else test_circuit_name
+            observable_name = observable_generating_func.__name__ if observable_name is None else observable_name
+            results_filename = f"benchmark_simresults_nqubits_{min(nqubits_arr)}-{max(nqubits_arr)}_depths_{min(depths_arr)}-{max(depths_arr)}_testcirc_{physical_circuit_name}_obsname_{observable_name}_bd_{simulator_max_bond_dimension}_shots_{sampler_opt_dict["default_shots"]}.txt"
+            results_filepath = os.path.join("" if simulation_results_folder_path is None else simulation_results_folder_path, results_filename)
+            if not os.path.isfile(results_filepath):
+                if print_mode: print(f"\rSimulating circuits for shots = {sampler_opt_dict["default_shots"]}".ljust(100), end="")
+                simulated_circuit_depths = [circuit.depth() for circuit in simulator_optimized_circuits]
+                to_return_evs = np.ones(len(simulated_circuit_depths))
+                to_run = [circuit for circuit in simulator_optimized_circuits if circuit.depth() > 0]
+                simulated_jobs = sexec.execute_simulation_estimator_batch(simulator_options, estimator_options, to_run, observable_generating_func)
+                simulated_evs = np.array([job.result()[0].data.evs[0] for job in simulated_jobs])
+                to_return_evs[np.greater(simulated_circuit_depths, 0)] = simulated_evs
+                perfect_evs += list(to_return_evs)
+                if simulation_results_folder_path is not None:
+                    np.savetxt(results_filepath, simulated_evs)
+
+        # Get observables for each number of qubits and depths
+        backends_name_arr = hexec.backends_objs_to_names(backends_arr)
+        print(f"\rSearching dabatase".ljust(100), end="")
+        found_benchmarks = self.search_by_params(nqubits_arr, depths_arr, backends_arr, sampler_opt_dicts, test_circuit_name, "Sampler", date_range)
+        sampler_opt_dict_str = [json.dumps(sampler_opt_dict) for sampler_opt_dict in sampler_opt_dicts]
+        measurement_dates = {x:{} for x in product(nqubits_arr, depths_arr, sampler_opt_dict_str)}
+        postselected_evs = {x:{} for x in product(nqubits_arr, depths_arr, sampler_opt_dict_str)}
+        raw_evs = {x:{} for x in product(nqubits_arr, depths_arr, sampler_opt_dict_str)}
+        for nqubits in nqubits_arr:
+            postselection_ops, diagonal_observables, non_diagonal_observables, basis = initialize_postselection(nqubits, postselect_generating_func, observable_generating_func)
+            for depth in depths_arr:
+                if print_mode: print(f"\rRetrieving jobs for nqubits = {nqubits} / depth = {depth}".ljust(100), end="")
+                for i, sampler_opt_dict_str in enumerate(sampler_opt_dict_str):
+                    this_measurement_dates = {backend_name: [] for backend_name in backends_name_arr}
+                    this_postselected_evs = {backend_name: [] for backend_name in backends_name_arr}
+                    this_raw_evs = {backend_name: [] for backend_name in backends_name_arr}
+                    for benchmark in found_benchmarks:
+                        for backend_name, job_dicts in benchmark["jobs"].items():
+                            for job_dict in job_dicts:
+                                if (job_dict["nqubits"] == nqubits) and (job_dict["depth"] == depth) and (job_dict["estimator_opt_dict"] == sampler_opt_dicts[i]):
+                                    if (job_dict["execution_time"] is not None) and (job_dict["samples"] is not None):
+                                        this_measurement_dates[backend_name].append(datetime.fromisoformat(job_dict["execution_time"]))
+                                        this_samples = job_dict["samples"]
+                                        this_postselected_samples = get_recovered_postselected_samples_dict(this_samples, postselection_ops, job_dicts["layout"], flip_threshold)
+                                        this_raw_evs[backend_name].append(measure_diagonal_observables(this_samples, diagonal_observables, job_dict["layout"]))
+                                        this_postselected_evs[backend_name].append(measure_diagonal_observables(this_postselected_samples, diagonal_observables, job_dict["layout"]))
+                    measurement_dates[(nqubits, depth, sampler_opt_dict_str)] = this_measurement_dates
+                    raw_evs[(nqubits, depth, sampler_opt_dict_str)] = this_raw_evs
+                    postselected_evs[(nqubits, depth, sampler_opt_dict_str)] = this_postselected_evs
+
+        if print_mode: print("\r".ljust(100), end="")
+
+        # Plot the results
+        fig, axs, = plt.subplots(nrows=len(nqubits_arr)*len(depths_arr)*len(sampler_opt_dicts), figsize=[10, 12*len(nqubits_arr)*len(depths_arr)], sharex=True)
+        njobs = len(nqubits_arr)*len(depths_arr)
+        for k, estimator_opt_dict_str in enumerate(sampler_opt_dict_str):
+            for i, nqubits in enumerate(nqubits_arr):
+                for j, depth in enumerate(depths_arr):
+                    for backend_name in backends_name_arr:
+                        postselected_errors = np.abs(np.array(postselected_evs[(nqubits, depth, estimator_opt_dict_str)][backend_name]) - perfect_evs[i+j+k*njobs])
+                        date_locator = pltdates.AutoDateLocator()
+                        date_formatter = pltdates.ConciseDateFormatter(date_locator, formats=['%Y', '%d/%b', '%d/%b', '%H:%M', '%H:%M', '%S.%f'], offset_formats=['', '%Y', '%b/%Y', '%d-%b-%Y', '%d/%b/%Y', '%d/%b/%Y %H:%M'])
+                        axs[i+j+k*njobs].plot(measurement_dates[(nqubits, depth, estimator_opt_dict_str)][backend_name], postselected_errors, "o-", linewidth=2, markersize=8, label=backend_name)
                         axs[i+j+k*njobs].xaxis.set_major_locator(date_locator)
                         axs[i+j+k*njobs].xaxis.set_major_formatter(date_formatter)
                         axs[i+j+k*njobs].tick_params(axis="x", rotation=45,) #ha="right")

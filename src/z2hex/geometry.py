@@ -104,12 +104,13 @@ class HeavyHexLattice:
                 if not (dx == 0 and dy == 0):
                     connected_edges_coords.append(coords)
         return connected_edges_coords
+    
     @staticmethod
     def get_backend_coordinates(backend_name):
         """Returns a list with the qubit coordinates of the specified backend
         """
         ibm_qubit_coords = []
-        if backend_name == 'ibm_fez' or backend_name == 'ibm_marrakech':
+        if backend_name == 'ibm_fez' or backend_name == 'ibm_marrakesh':
             for i in range(8):
                 for j in range(16):
                     ibm_qubit_coords.append((2*i, j))
@@ -159,7 +160,7 @@ class HeavyHexLattice:
         backend = backends_objs_to_names(backend)
         ibm_qubit_coords = []
         if first_qubit == None:
-            if backend == 'ibm_fez':
+            if backend == 'ibm_fez' or backend == "ibm_marrakesh":
                 first_qubit = 3
             else:
                 first_qubit = 0
