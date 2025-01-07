@@ -997,7 +997,7 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
             odr_expectation_values = measure_diagonal_observables(postselected_odr_samples_dict, diagonal_observables, jobs_layout[i][::-1])
             raw_expectation_values = measure_diagonal_observables(real_samples_dict, diagonal_observables, jobs_layout[len(odr_circuits)+i][::-1])
             p_arr = compute_depolarizing_probability(odr_expectation_values, 1, 0, odr_circuits[i].num_qubits)
-            clean_expectation_values = renormalize_observable(real_expectation_values, p_arr, 0, transpiled_circuits[i].num_qubits)
+            clean_expectation_values = renormalize_observable(real_expectation_values, p_arr, 0, transpiled_circuits[i].num_qubits, observable_range=(-1, 1))
             expectation_values = clean_expectation_values
             real_observable_matrix[i, :] = real_expectation_values
             odr_observable_matrix[i, :] = odr_expectation_values
