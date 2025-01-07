@@ -95,7 +95,8 @@ class HeavyHexLattice:
     def coords_to_logical_qb(self, coords):
         if len(coords) == 2:
             coords = [tuple(coords)]
-        return [self.coords.index((coord[0], coord[1])) for coord in coords]
+        to_return = [self.coords.index((coord[0], coord[1])) for coord in coords]
+        return to_return if len(to_return) > 1 else to_return[0]
     
     def edges_connected_to_node(self, node_coords):
         connected_edges_coords = []
@@ -104,6 +105,9 @@ class HeavyHexLattice:
                 if not (dx == 0 and dy == 0):
                     connected_edges_coords.append(coords)
         return connected_edges_coords
+    
+    def nodes_connected_to_edge(self, edge_coords):
+        return (np.floor(edge_coords[0]).astype(int), np.floor(edge_coords[1]).astype(int)), (np.ceil(edge_coords[0]).astype(int), np.ceil(edge_coords[1]).astype(int))
     
     @staticmethod
     def get_backend_coordinates(backend_name):
