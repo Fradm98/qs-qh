@@ -61,7 +61,54 @@ module Z2HiggsChainDynamics
         siteinds("Qubit", 2*chain_length-1)
     end
 
-    function particle_pair_quench_simulation(sites::Sites, observables::Vector{MPO}, J::Real, h::Real, λ::Real, particle_pair_left_position::Int, particle_pair_length::Int, final_time::Real, steps::Int, error::Real; x_basis::Bool=false, filepath::Union{String, Nothing}=nothing)
+    function single_particle_quench_simulation(sites::Sites, observables::Vector{MPO}, J::Real, h::Real, λ::Real, particle_position::Int, final_time::Real, steps::Int, x_basis::Bool=false, plot_each::Int=1, cutoff::Real=1e-13, filepath::Union{String, Nothing}=nothing)
+        if length(sites) < 2
+            throw(ArgumentError("chain_length must be ≥ 2"))
+        end
+
+        if filepath !== nothing
+            if isfile(filepath)
+                site_gauge_observable_matrix = npzread(filepath)
+                return site_gauge_observable_matrix
+            end
+        end
+
+        # Initial state
+        initial_state_string = ["Up" for i in 1:length(sites)]
+        initial_state_string[2*particle_position + 1] = "Dn"
+        initial_state_string[2*particle_position + 2:2:end] .= "Dn"
+        ψ0 = MPS(sites, initial_state_string)
+
+        # Propagator
+        dt = final_time / steps
+        base_trotter_layer = trotter_layer(sites, J, h, λ, dt, x_basis=x_basis)
+
+        # Time evolution
+        site_gauge_observable_matrix = zeros(Float64, (steps ÷ plot_each + 1, length(observables)))
+        ψ = ψ0
+        for i in 0:steps
+            this_time = i * dt
+            print("\rt = $this_time")
+            if i % plot_each == 0 || i == steps
+                for (j, observable) in pairs(observables)
+                    site_gauge_observable_matrix[(i÷plot_each)+1, j] = real(inner(ψ', observable, ψ))
+                end
+            end
+            if i !== steps
+                ψ = apply(base_trotter_layer, ψ; cutoff=cutoff)
+            end
+        end
+
+        print("\rt = $final_time\n")
+
+        if filepath !== nothing
+            npzwrite(filepath, site_gauge_observable_matrix)
+        end
+
+        return site_gauge_observable_matrix
+    end
+
+    function particle_pair_quench_simulation(sites::Sites, observables::Vector{MPO}, J::Real, h::Real, λ::Real, particle_pair_left_position::Int, particle_pair_length::Int, final_time::Real, steps::Int, error::Real; x_basis::Bool=false, cutoff=1e-13, filepath::Union{String, Nothing}=nothing)
         if length(sites) < 2
             throw(ArgumentError("chain_length must be ≥ 2"))
         end
@@ -97,7 +144,55 @@ module Z2HiggsChainDynamics
                 site_gauge_observable_matrix[i+1, j] = real(inner(ψ', observable, ψ))
             end
             if i !== steps+1
-                ψ = apply(step_propagator, ψ)
+                ψ = apply(step_propagator, ψ; cutoff=cutoff)
+            end
+        end
+
+        print("t = $final_time")
+
+        if filepath !== nothing
+            npzwrite(filepath, site_gauge_observable_matrix)
+        end
+
+        return site_gauge_observable_matrix
+    end
+
+    function particle_pair_quench_simulation(sites::Sites, observables::Vector{MPO}, J::Real, h::Real, λ::Real, particle_pair_left_position::Int, particle_pair_length::Int, final_time::Real, steps::Int, x_basis::Bool=false, plot_each::Int=1, cutoff=1e-13, filepath::Union{String, Nothing}=nothing)
+        if length(sites) < 2
+            throw(ArgumentError("chain_length must be ≥ 2"))
+        end
+
+        if filepath !== nothing
+            if isfile(filepath)
+                site_gauge_observable_matrix = npzread(filepath)
+                return site_gauge_observable_matrix
+            end
+        end
+
+        # Initial state
+        initial_state_string = ["Up" for i in 1:length(sites)]
+        initial_state_string[2*particle_pair_left_position+1] = "Dn"
+        initial_state_string[2*particle_pair_left_position+2:2:2*particle_pair_left_position+1+2*particle_pair_length] .= "Dn"
+        initial_state_string[2*particle_pair_left_position+1+2*particle_pair_length] = "Dn"
+        ψ0 = MPS(sites, initial_state_string)
+
+        # Propagator
+        dt = final_time / steps
+        base_trotter_layer = trotter_layer(sites, J, h, λ, dt, x_basis=x_basis)
+
+        # Time evolution
+        site_gauge_observable_matrix = zeros(Float64, (steps ÷ plot_each + 1, length(observables)))
+        ψ = ψ0
+        for i in 0:steps
+            this_time = i * dt
+            print("\rt = $this_time")
+            if i % plot_each == 0 || i == steps
+                for (j, observable) in pairs(observables)
+                    site_gauge_observable_matrix[(i÷plot_each)+1, j] = real(inner(ψ', observable, ψ))
+                end
+            end
+            if i !== steps
+                ψ = apply(base_trotter_layer, ψ; cutoff=cutoff)
             end
         end
 
@@ -110,3 +205,7 @@ module Z2HiggsChainDynamics
         return site_gauge_observable_matrix
     end
 end
+
+# sites = Z2HiggsChainDynamics.chain_sites(9)
+# observables = Z2HiggsChainDynamics.all_local_pauli_z(sites)
+# Z2HiggsChainDynamics.single_particle_quench_simulation(sites, observables, 1, 1.5, 2, )
