@@ -110,9 +110,10 @@ class HeavyHexLattice:
         return (np.floor(edge_coords[0]).astype(int), np.floor(edge_coords[1]).astype(int)), (np.ceil(edge_coords[0]).astype(int), np.ceil(edge_coords[1]).astype(int))
     
     @staticmethod
-    def get_backend_coordinates(backend_name):
+    def get_backend_coordinates(backend):
         """Returns a list with the qubit coordinates of the specified backend
         """
+        backend_name = backends_objs_to_names(backend)
         ibm_qubit_coords = []
         if backend_name == 'ibm_fez' or backend_name == 'ibm_marrakesh':
             for i in range(8):
@@ -149,6 +150,7 @@ class HeavyHexLattice:
                 for j in range(4):
                     ibm_qubit_coords.append((4*i+3, 4*j+2))
         return sorted(ibm_qubit_coords)
+    
     def initial_qubit_layout(self, first_qubit=None, backend=None, reflex=None):
         """Returns the mapping from own qubit indices to ibm physical qubits
         Arguments:
@@ -197,6 +199,7 @@ class HeavyHexLattice:
             return np.array(initial_qubit_layout)
         else:
             raise ValueError("Invalid initial qubit")
+
     def get_all_layouts(self, backend=None):
         """Returns a list of all possible mappings from own qubit indices to ibm physical qubits
         Possible isomorphisms are reflections and 60º rotations
@@ -316,3 +319,52 @@ def is_edge_coords(coords):
             return ~np.equal(coords.sum(axis=1) % 1, 0)
         except np.AxisError:
             raise np.AxisError("Coords is not a valid tuple or N x 2 array")
+
+def plot_layout_over_device(backend, layout, scale=1):
+    backend_coords = HeavyHexLattice.get_backend_coordinates(backend)
+    backend_edges = []
+    edges_colors = []
+    backend_vertices = []
+    vertices_colors = []
+    for i, coord in enumerate(backend_coords):
+        if coord[1] % 2 == 1 or coord[0] % 2 == 1:
+            backend_edges.append(coord)
+            edges_colors.append("#2f64f7" if i in layout else "white")
+        else:
+            vertices_colors.append("#2f64f7" if i in layout else "white")
+            backend_vertices.append(coord)
+    max_x = max([coords[1] for coords in backend_coords])
+    max_y = max([coords[0] for coords in backend_coords])
+    vertices_x = np.array([v[1] for v in backend_vertices], dtype=int)
+    vertices_y = np.array([max_y - v[0] for v in backend_vertices], dtype=int)
+    edges_endpoints_x = []
+    edges_endpoints_y = []
+    edges_boxes_x = []
+    edges_boxes_y = []
+    for edge in backend_edges:
+        if edge[0] % 2 == 0:
+            edges_endpoints_x.append([edge[1]-1, edge[1]+(not edge[1] == max_x)])
+            edges_endpoints_y.append([max_y - edge[0], max_y - edge[0]])
+        else:
+            edges_endpoints_x.append([edge[1], edge[1]])
+            edges_endpoints_y.append([max_y - (edge[0] - 1), max_y - (edge[0] + 1)])
+        edges_boxes_x.append(edge[1])
+        edges_boxes_y.append(max_y - edge[0])
+
+    fig, ax = plt.subplots(figsize=[scale*max_x, scale*max_y])
+    ax.set_aspect('equal')
+    for exs, eys in zip(edges_endpoints_x, edges_endpoints_y):
+        plt.plot(exs, eys, color="black")
+    plt.scatter(vertices_x, vertices_y, 600*scale, vertices_colors, marker="o", edgecolors="black", zorder=2)
+    plt.scatter(edges_boxes_x, edges_boxes_y, 700*scale, edges_colors, marker=(4, 0, 45), edgecolors="black", zorder=2)
+    layout_ind = 0
+    ttransform = mpl.transforms.Affine2D().translate(0, -1*scale)
+    for qbind, (y, x) in enumerate(backend_coords):
+        if qbind in layout:
+            text = plt.text(x, max_y - y, str(layout_ind), color="white", fontsize=15*scale, ha='center', va='center')
+            text.set_transform(text.get_transform() + ttransform)
+            layout_ind += 1
+    plt.axis("off")
+    plt.ylim([-0.2, max_y+0.2])
+    plt.tight_layout()
+    plt.rcdefaults()
