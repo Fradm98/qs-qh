@@ -234,6 +234,54 @@ def string_quench_simulation_circuits_dt(lattice, J, h, lamb, string_qubits, fin
         circs_to_return.append(this_time_physical_circuit)
     return circs_to_return
 
+def all_layouts_string_quench_simulation_circuits_dt(lattice, J, h, lamb, string_qubits, final_time, dt, steps, backend, optimization_level, g=None, forbidden_qubits=[], x_basis=False, force_even=True, barriers=False):
+    all_layouts = lattice.all_qubit_layouts(backend)
+    to_construct_layouts = []
+    for layout in all_layouts:
+        for qubit in forbidden_qubits:
+            if qubit in layout:
+                break
+        else:
+            to_construct_layouts.append(layout)
+    t_arr = np.linspace(0, final_time, steps+1)
+    nlayers_arr = (t_arr // dt).astype(int)
+    nlayers_arr[nlayers_arr == 0] = 1
+    if force_even:
+        nlayers_arr[np.equal(nlayers_arr % 2, 0)] += 1
+    dt_arr = t_arr / nlayers_arr
+    state_preparation_logical_circ = StringInitialStateCirc(lattice, string_qubits, x_basis)
+    circs_to_return = []
+    for layout in to_construct_layouts:
+        trotter_pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=layout)
+        state_preparation_physical_circ = trotter_pm.run(state_preparation_logical_circ)
+        try:
+            if (fractional_gates := backend.options.use_fractional_gates):
+                sched_pm = PassManager([ALAPScheduleAnalysis(backend.instruction_durations), PadDelay(backend.instruction_durations)])
+        except AttributeError:
+            fractional_gates = False
+        measured_state_preparation_circuit = QuantumCircuit(len(lattice), len(lattice))
+        measured_state_preparation_circuit = measured_state_preparation_circuit.compose(state_preparation_logical_circ)
+        state_preparation_physical_circ = trotter_pm.run(measured_state_preparation_circuit)
+        measured_state_preparation_physical_circ = state_preparation_physical_circ.copy()
+        measured_state_preparation_physical_circ.measure(layout[np.argsort(layout)], np.argsort(layout[np.argsort(layout)]))
+        if fractional_gates:
+            measured_state_preparation_physical_circ = sched_pm.run(measured_state_preparation_physical_circ)
+        this_circs_to_return = [measured_state_preparation_physical_circ]
+        sqcancel_pm = PassManager([Optimize1qGates(target=backend.target), Optimize1qGatesDecomposition(target=backend.target), Optimize1qGatesSimpleCommutation(target=backend.target)])
+        for i in range(steps):
+            this_trotter_layer_logical_circuit = SecondOrderTrotter(lattice, J, h, lamb, dt_arr[i+1], 1, g=g, x_basis=x_basis, barriers=barriers)
+            this_trotter_layer_physical_circuit = trotter_pm.run(this_trotter_layer_logical_circuit)
+            state_preparation_physical_circ = trotter_pm.run(state_preparation_logical_circ)
+            this_time_physical_circuit = state_preparation_physical_circ.compose(this_trotter_layer_physical_circuit.repeat(nlayers_arr[i+1])).decompose()
+            this_time_physical_circuit = remove_idle_qwires(this_time_physical_circuit, relabeling=np.arange(len(layout))[np.argsort(layout)])
+            layout_dict = {layout[i]:this_time_physical_circuit.qubits[i] for i in range(this_time_physical_circuit.num_qubits)}
+            layout_pm = PassManager([SetLayout(layout=Layout(layout_dict)), FullAncillaAllocation(coupling_map=backend.target), ApplyLayout()])
+            sqopt_pm = StagedPassManager(stages=["optimization", "layout"], layout=layout_pm, optimization=sqcancel_pm)
+            this_time_physical_circuit = sqopt_pm.run(this_time_physical_circuit)
+            this_circs_to_return.append(this_time_physical_circuit)
+        circs_to_return.append(this_circs_to_return)
+    return circs_to_return
+
 def erradj_string_quench_simulation_circuits_eplg(lattice, J, h, lamb, string_qubits, final_time, steps, backend, optimization_level, eplg_absolute, g=None, layout_first_qubit=None, x_basis=False, force_even=True, max_layers=100, adjust_depth=False, barriers=False):
     backend_name = backends_objs_to_names(backend)
     if "aer_simulator" in backend_name:
