@@ -33,6 +33,51 @@ def x_t_plot(site_gauge_observable_matrix, cbar_range=None, nxticks=5, filepath=
     plt.show()
     plt.rcdefaults()
 
+def x_t_separated_plot(site_gauge_z_matrix, cbar_range=None, nxticks=5, filepath=""):
+    if isinstance(site_gauge_z_matrix[0], BasePrimitiveJob) or isinstance(site_gauge_z_matrix[0], RuntimeJob):
+        site_gauge_z_matrix = convert_jobs_to_site_gauge_matrix(site_gauge_z_matrix)
+    else:
+        site_gauge_z_matrix = np.array(site_gauge_z_matrix)
+    
+    matter_occupation_matrix = (1 - site_gauge_z_matrix[:, 0::2])/2
+    gauge_z_matrix = site_gauge_z_matrix[:, 1::2]
+
+    plt.rc("text", usetex=True)
+    plt.rc("font", size=24, family="serif", weight="bold")
+
+    fig, ax = plt.subplots(1, 2, figsize=[12, 8], sharey=True)
+
+    aspect = site_gauge_z_matrix.shape[0]/site_gauge_z_matrix.shape[1]/15
+
+    if cbar_range is None:
+        imm = ax[0].imshow(matter_occupation_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2)
+        img = ax[1].imshow(gauge_z_matrix, cmap="bwr", aspect=aspect if aspect > 1/2 else 1/2)
+    else:
+        imm = ax[0].imshow(matter_occupation_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2, vmax=cbar_range[1], vmin=cbar_range[0])
+        img = ax[1].imshow(gauge_z_matrix, cmap="bwr", aspect=aspect if aspect > 1/2 else 1/2, vmax=cbar_range[1], vmin=cbar_range[0])
+    
+    cbarm = plt.colorbar(imm, ax=ax[0])
+    cbarm.ax.set_ylabel(r"$(1 - \langle Z \rangle)/2$", labelpad=10)
+
+    cbarg = plt.colorbar(img, ax=ax[1])
+    cbarg.ax.set_ylabel(r"$\langle Z \rangle$", labelpad=10)
+
+    ax[0].set_xlabel(r"Matter sites")
+    ax[1].set_xlabel(r"Gauge sites")
+    ax[0].set_ylabel("step")
+
+    ax[0].set_xticks(np.round(np.linspace(0, matter_occupation_matrix.shape[1]-1, nxticks)).astype(int), np.round(np.linspace(1, matter_occupation_matrix.shape[1], nxticks)).astype(int))
+    gauge_ticks_location = np.round(np.linspace(0, gauge_z_matrix.shape[1]-1, nxticks)).astype(int)
+    ax[1].set_xticks(gauge_ticks_location, [f"({g+1}, {g+2})" for g in gauge_ticks_location])
+
+    # plt.suptitle(r"Particle \& Gauge occupation", horizontalalignment="center")
+
+    # plt.tight_layout()
+    if filepath:
+        plt.savefig(filepath, dpi=300, facecolor="none")
+    plt.show()
+    plt.rcdefaults()
+
 def discrepancies_plot(exact_site_gauge_observable_matrix, approximated_site_gauge_observable_matrix, filepath=""):
     if isinstance(exact_site_gauge_observable_matrix[0], BasePrimitiveJob) or isinstance(exact_site_gauge_observable_matrix[0], RuntimeJob):
         exact_site_gauge_observable_matrix = convert_jobs_to_site_gauge_matrix(exact_site_gauge_observable_matrix)
