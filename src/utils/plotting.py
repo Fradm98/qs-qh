@@ -8,6 +8,7 @@ from pymatching import Matching
 import scipy as sp
 import numpy as np
 import sys
+import os
 
 def convert_jobs_to_site_gauge_matrix(jobs_arr):
     printed_warning_header = False
@@ -48,10 +49,16 @@ def save_site_gauge_observable_matrix(site_gauge_observable_matrix, filepath, he
     if isinstance(site_gauge_observable_matrix[0], BasePrimitiveJob):
         site_gauge_observable_matrix = convert_jobs_to_site_gauge_matrix(site_gauge_observable_matrix)
 
-    np.savetxt(filepath, site_gauge_observable_matrix, header=header)
+    if os.path.splitext(filepath)[1] == ".npy":
+        np.save(filepath, site_gauge_observable_matrix)
+    else:
+        np.savetxt(filepath, site_gauge_observable_matrix, header=header)
 
 def load_site_gauge_observable_matrix(filepath):
-    return np.loadtxt(filepath)
+    if os.path.splitext(filepath)[1] == ".npy":
+        return np.load(filepath)
+    else:
+        return np.loadtxt(filepath)
 
 def observable_depth_mitigation_comparison_plot(plot_dict, x_plot, y_lim=[], x_label="", y_label="", colors=None, markers=["o", "^", "s", "X", "v"], regression=False, resolution=100, filepath=""):
     # plot_dict:
