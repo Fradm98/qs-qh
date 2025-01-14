@@ -250,11 +250,12 @@ class HeavyHexLattice:
                                 break
                             layout.append(ibm_qubit_coords.index(ibm_c))
                     if fits:
-                        sort = sorted(layout)
+                        # sort = sorted(layout)
                         # Exclude automorphisms
-                        if sort not in sorted_layouts:
-                            layouts.append(layout)
-                            sorted_layouts.append(sort)
+                        # if sort not in sorted_layouts:
+                        #     layouts.append(layout)
+                        #     sorted_layouts.append(sort)
+                        layouts.append(layout)
         return layouts
 
     def __len__(self):
