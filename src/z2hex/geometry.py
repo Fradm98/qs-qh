@@ -226,8 +226,8 @@ class HeavyHexLattice:
                     layout = []
                     fits = False
                     if (row_ibm+dir_row, col_ibm) in ibm_qubit_coords:
-                        if dir_row == -1: # skip up-down mirroring as it is redundant
-                            continue
+                        # if dir_row == -1: # skip up-down mirroring as it is redundant
+                        #     continue
                         fits = True
                         (row_orig, col_orig) = self.coords[0] # Coordinates of qubit 0
                         for (row_lattice, col_lattice) in self.coords:
