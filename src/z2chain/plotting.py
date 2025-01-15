@@ -45,7 +45,7 @@ def x_t_separated_plot(site_gauge_z_matrix, cbar_range=None, nxticks=5, filepath
     plt.rc("text", usetex=True)
     plt.rc("font", size=24, family="serif", weight="bold")
 
-    fig, ax = plt.subplots(1, 2, figsize=[12, 8], sharey=True)
+    fig, ax = plt.subplots(1, 2, figsize=[12, 8], sharey=True, dpi=300)
 
     aspect = site_gauge_z_matrix.shape[0]/site_gauge_z_matrix.shape[1]/15
 
@@ -217,3 +217,132 @@ def plot_n_discarded_samples(samples_dicts, postselected_samples_dicts, x_arr=No
         plt.savefig(filepath, dpi=300, facecolor="none")
     plt.show()
     plt.rcdefaults()
+
+
+def plot_average_separated(obs, ax, string):
+    """
+    plot average separated
+
+    TODO description
+    """
+    times = range(np.asarray(obs).T.shape[0])
+    matter_occupation_matrix = (1 - np.asarray(obs).T[:, 0::2])/2
+    gauge_z_matrix = np.asarray(obs).T[:, 1::2]
+
+    if string == "transverse":
+        marker = "p"
+    elif string == "longitudinal":
+        marker = "^"
+    av_occ = np.mean(matter_occupation_matrix, axis=1)
+    av_gf = np.mean(gauge_z_matrix, axis=1)
+    ax[0].plot(times, av_occ, marker, label=f"{string}")
+    ax[0].set_ylabel(r"$(1 - \langle Z \rangle)/2$", labelpad=10)
+    ax[0].set_xlabel(r"Matter sites")
+    ax[1].plot(times, av_gf, marker, label=f"{string}")
+    ax[1].set_ylabel(r"$\langle Z \rangle$", labelpad=10)
+    ax[1].set_xlabel(r"Gauge sites")
+
+
+def plot_string_observables( 
+                            observable: np.ndarray, 
+                            transverse: list=None, 
+                            longitudinal: list=None,
+                            cm: bool=False,
+                            separated: bool=True,
+                            sim_type: int=0,
+                            obs_type: str="occ",
+                            params: list=None,
+                            std: np.ndarray=None
+
+                            ):
+    """
+    plot string observables
+
+    This function plots the values of the gauge fields <Z> or 
+    the matter sites occupation (1 - <Z>)/2 for the qubits 
+    longitudinal and/or transversal to the string.
+    If both components are passed it plots the normalized averages of the
+    observables in one plot. If cm (colormap) is true it returns two colormaps.
+    These functionalities could be used to identify different physics modes 
+    given by the time evolution.
+
+    observable: np.ndarray - total array of observables
+    transverse: list - list of qubit labels according to the layout chosen. By default None
+    longitudinal: list - list of qubit labels according to the layout chosen. By default None
+    cm: bool - colormap with every local observables. By default False, will plot averages
+    sim_type: int - type of simulation chosen. Choose among: 0 - real, 1 - no odr, 
+            2 - calibration circs odr, 3 - raw. By default 0
+    obs_type: str - type of observable to plot. Choose among: "occ" occupation and "gf" gauge field. By default occupation
+    params: list - parameters used during the time evolution. By default None
+    std: np.ndarray - standard deviation of the observables. By default None
+
+    """
+    obs_t = None
+    obs_l = None
+    
+    plt.rc("text", usetex=True)
+    plt.rc("font", size=24, family="serif", weight="bold")
+    plt.rc("figure", dpi=300)
+    
+    times = range(observable.shape[1])
+    if separated:
+        if transverse is not None:
+            obs_t = [observable[sim_type,:,i] for i in transverse]
+        if longitudinal is not None:
+            obs_l = [observable[sim_type,:,i] for i in longitudinal]
+
+        if cm:
+            if obs_t is not None:
+                print(f"\n -- tranverse:")
+                x_t_separated_plot(np.asarray(obs_t).T)
+            if obs_l is not None:
+                print(f"\n -- longitudinal:")
+                x_t_separated_plot(np.asarray(obs_l).T)
+        
+        else:
+            fig, ax = plt.subplots(1, 2, figsize=[12, 8], sharey=True, dpi=300)
+
+            if obs_t is not None:
+                plot_average_separated(obs_t, ax, "transverse")
+            if obs_l is not None:
+                plot_average_separated(obs_l, ax, "longitudinal")
+
+            
+            ax[0].legend(fontsize=12)
+            ax[1].legend(fontsize=12)
+            ax[0].grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
+            ax[1].grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
+            plt.suptitle("Matter $\&$ Gauge sites of the transverse and longitudinal strings")
+            plt.show()
+            
+    else:
+        if obs_type == "occ":
+            observable = (1 - observable[:,:]) / 2
+
+        if transverse is not None:
+            obs_t = [observable[sim_type,:,i] for i in transverse]
+        if longitudinal is not None:
+            obs_l = [observable[sim_type,:,i] for i in longitudinal]
+            
+        if cm:
+            if obs_t is not None:
+                print(f"\n -- tranverse:")
+                x_t_plot(np.asarray(obs_t).T)
+            if obs_l is not None:
+                print(f"\n -- longitudinal:")
+                x_t_plot(np.asarray(obs_l).T)
+
+        else:
+            if obs_t is not None:
+                av_obs_t = np.mean(obs_t, axis=0)
+                plt.plot(times, av_obs_t, 'p', label="Transverse")
+            if obs_l is not None:
+                av_obs_l = np.mean(obs_l, axis=0)
+                plt.plot(times, av_obs_l, '^', label="Longitudinal")
+            
+            plt.title("Gauge sites of the transverse and longitudinal strings")
+            plt.xlabel("Circuit index")
+            plt.ylabel("$\\frac{1}{N}\\sum_{x} \\langle Z(x) \\rangle$")
+            plt.legend(fontsize=12)
+            plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
+            plt.show()
