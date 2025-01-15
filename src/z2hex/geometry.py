@@ -200,7 +200,7 @@ class HeavyHexLattice:
         else:
             raise ValueError("Invalid initial qubit")
 
-    def get_all_layouts(self, backend=None):
+    def get_all_layouts(self, backend=None, exclude_automorphisms=False):
         """Returns a list of all possible mappings from own qubit indices to ibm physical qubits
         Possible isomorphisms are reflections and 60º rotations
         Arguments:
@@ -226,8 +226,8 @@ class HeavyHexLattice:
                     layout = []
                     fits = False
                     if (row_ibm+dir_row, col_ibm) in ibm_qubit_coords:
-                        # if dir_row == -1: # skip up-down mirroring as it is redundant
-                        #     continue
+                        if exclude_automorphisms and dir_row == -1: # skip up-down mirroring as it is an automorphism
+                            continue
                         fits = True
                         (row_orig, col_orig) = self.coords[0] # Coordinates of qubit 0
                         for (row_lattice, col_lattice) in self.coords:
@@ -250,12 +250,13 @@ class HeavyHexLattice:
                                 break
                             layout.append(ibm_qubit_coords.index(ibm_c))
                     if fits:
-                        # sort = sorted(layout)
-                        # Exclude automorphisms
-                        # if sort not in sorted_layouts:
-                        #     layouts.append(layout)
-                        #     sorted_layouts.append(sort)
-                        layouts.append(layout)
+                        if exclude_automorphisms:
+                            sort = sorted(layout)
+                            if sort not in sorted_layouts:
+                                layouts.append(layout)
+                                sorted_layouts.append(sort)
+                        elif layout not in layouts:
+                            layouts.append(layout)
         return layouts
 
     def __len__(self):
@@ -358,13 +359,12 @@ def plot_layout_over_device(backend, layout, scale=1):
         plt.plot(exs, eys, color="black")
     plt.scatter(vertices_x, vertices_y, 600*scale, vertices_colors, marker="o", edgecolors="black", zorder=2)
     plt.scatter(edges_boxes_x, edges_boxes_y, 700*scale, edges_colors, marker=(4, 0, 45), edgecolors="black", zorder=2)
-    layout_ind = 0
     ttransform = mpl.transforms.Affine2D().translate(0, -1*scale)
     for qbind, (y, x) in enumerate(backend_coords):
         if qbind in layout:
+            layout_ind = layout.index(qbind)
             text = plt.text(x, max_y - y, str(layout_ind), color="white", fontsize=15*scale, ha='center', va='center')
             text.set_transform(text.get_transform() + ttransform)
-            layout_ind += 1
     plt.axis("off")
     plt.ylim([-0.2, max_y+0.2])
     plt.tight_layout()
