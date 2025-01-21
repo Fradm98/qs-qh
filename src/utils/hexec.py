@@ -205,7 +205,7 @@ def execute_estimator_batch(backend, estimator_opt_dict, transpiled_circuits, ob
 
     return job_objs
 
-def execute_sampler_batch(backend, sampler_opt_dicts, transpiled_circuits, extra_circuits=None, extra_sampler_opts_dict_ind=0, job_db=None):
+def execute_sampler_batch(backend, sampler_opt_dicts, transpiled_circuits, extra_circuits=None, extra_sampler_opts_dict_ind=0, batch=None, job_db=None):
     if type(sampler_opt_dicts) not in [list, tuple, np.ndarray]:
         sampler_opt_dicts = [sampler_opt_dicts]
     if type(transpiled_circuits) not in [list, tuple, np.ndarray]:
@@ -216,25 +216,29 @@ def execute_sampler_batch(backend, sampler_opt_dicts, transpiled_circuits, extra
     job_objs = []
     executed_circuits = []
 
-    with Batch(backend=backend) as batch:
-        if extra_circuits is not None:
-            sampler = SamplerV2(mode=batch, options=sampler_opt_dicts[extra_sampler_opts_dict_ind])
-            try:
-                executed_circuits += extra_circuits
-            except ValueError:
-                executed_circuits += extra_circuits.tolist()
-            for circ in extra_circuits:
-                this_circ = check_and_measure_active_qubits(circ)
-                job_objs.append(sampler.run([this_circ]))
+    if batch is not None:
+        batch = Batch(backend=backend)
+
+    if extra_circuits is not None:
+        sampler = SamplerV2(mode=batch, options=sampler_opt_dicts[extra_sampler_opts_dict_ind])
         try:
-            executed_circuits += transpiled_circuits
+            executed_circuits += extra_circuits
         except ValueError:
-            executed_circuits += transpiled_circuits.tolist()
-        for sampler_opt_dict in sampler_opt_dicts:
-            sampler = SamplerV2(mode=batch, options=sampler_opt_dict)
-            for circ in transpiled_circuits:
-                this_circ = check_and_measure_active_qubits(circ)
-                job_objs.append(sampler.run([this_circ]))
+            executed_circuits += extra_circuits.tolist()
+        for circ in extra_circuits:
+            this_circ = check_and_measure_active_qubits(circ)
+            job_objs.append(sampler.run([this_circ]))
+    try:
+        executed_circuits += transpiled_circuits
+    except ValueError:
+        executed_circuits += transpiled_circuits.tolist()
+    for sampler_opt_dict in sampler_opt_dicts:
+        sampler = SamplerV2(mode=batch, options=sampler_opt_dict)
+        for circ in transpiled_circuits:
+            this_circ = check_and_measure_active_qubits(circ)
+            job_objs.append(sampler.run([this_circ]))
+
+    batch.close()
 
     # DEBUG: Comment above and uncomment below
     # if extra_circuits is not None:

@@ -5,6 +5,7 @@ from qiskit_ibm_runtime.exceptions import RuntimeJobFailureError
 from qiskit_ibm_runtime import RuntimeDecoder, RuntimeEncoder
 from qiskit.quantum_info import Pauli, PauliList
 from utils.hexec import execute_sampler_batch
+from qiskit_ibm_runtime import Batch
 from qiskit import QuantumCircuit
 from collections import Counter
 from pymatching import Matching
@@ -715,10 +716,12 @@ def execute_postselected_sampler_batch(backend, sampler_opt_dict, transpiled_cir
 
     circuits_to_run = generate_multilayout_circuits_to_run(transpiled_circuits, odr_circuits, nrepetitions)
 
+    batch = Batch(backend=backend)
+
     # First send diagonal jobs
     job_objs = []
     for i, this_layout_circs in enumerate(circuits_to_run):
-        this_jobs = execute_sampler_batch(backend, sampler_options_per_layout, this_layout_circs[odr_circuits.shape[-1]:], this_layout_circs[:odr_circuits.shape[-1]] if odr_circuits is not None else None)
+        this_jobs = execute_sampler_batch(backend, sampler_options_per_layout, this_layout_circs[odr_circuits.shape[-1]:], this_layout_circs[:odr_circuits.shape[-1]] if odr_circuits is not None else None, batch=batch)
         job_objs.append(this_jobs)
     job_objs = np.array(job_objs)
 
