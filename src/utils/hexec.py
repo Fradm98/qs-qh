@@ -219,11 +219,17 @@ def execute_sampler_batch(backend, sampler_opt_dicts, transpiled_circuits, extra
     with Batch(backend=backend) as batch:
         if extra_circuits is not None:
             sampler = SamplerV2(mode=batch, options=sampler_opt_dicts[extra_sampler_opts_dict_ind])
-            executed_circuits += extra_circuits
+            try:
+                executed_circuits += extra_circuits
+            except ValueError:
+                executed_circuits += extra_circuits.tolist()
             for circ in extra_circuits:
                 this_circ = check_and_measure_active_qubits(circ)
                 job_objs.append(sampler.run([this_circ]))
-        executed_circuits += transpiled_circuits
+        try:
+            executed_circuits += transpiled_circuits
+        except ValueError:
+            executed_circuits += transpiled_circuits.tolist()
         for sampler_opt_dict in sampler_opt_dicts:
             sampler = SamplerV2(mode=batch, options=sampler_opt_dict)
             for circ in transpiled_circuits:

@@ -689,7 +689,8 @@ def execute_postselected_sampler_batch(backend, sampler_opt_dict, transpiled_cir
         shots_per_layout = sampler_opt_dict.get("default_shots", 1)
     
     if shots_per_layout > max_shots:
-        nrepetitions = shots_per_layout // max_shots + 1
+        nrepetitions = shots_per_layout // max_shots
+        nrepetitions = nrepetitions + 1 if nrepetitions == 0 else nrepetitions
         last_rep_shots = shots % max_shots
         sampler_options_per_layout = []
         for i in range(nrepetitions):
