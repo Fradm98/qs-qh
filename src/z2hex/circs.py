@@ -222,8 +222,7 @@ def get_layouts(lattice, backend, layout_first_or_all=None, forbidden_qubits=[])
                 to_return.append(layout)
         return to_return
 
-def string_quench_simulation_circuits_dt(lattice, Js, hs, lambdas, string_qubits, final_time, dt, steps, backend, optimization_level, g=None, layout_first_or_all=None, x_basis=False, force_even=True, forbidden_qubits=[], barriers=False):
-    to_construct_layouts = get_layouts(lattice, backend, layout_first_or_all, forbidden_qubits)
+def string_quench_simulation_circuits_dt(lattice, Js, hs, lambdas, string_qubits, final_time, dt, steps, backend, optimization_level, g=None, layouts=None, x_basis=False, force_even=True, barriers=False):
     Js = np.array(Js)
     hs = np.array(hs)
     lambdas = np.array(lambdas)
@@ -254,7 +253,7 @@ def string_quench_simulation_circuits_dt(lattice, Js, hs, lambdas, string_qubits
     except AttributeError:
         fractional_gates = False
     circs_to_return = []
-    for layout in to_construct_layouts:
+    for layout in layouts:
         layout = np.array(layout)
         trotter_pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=layout)
         state_preparation_physical_circ = trotter_pm.run(state_preparation_logical_circ)
@@ -281,15 +280,14 @@ def string_quench_simulation_circuits_dt(lattice, Js, hs, lambdas, string_qubits
         circs_to_return.append(this_layout_circs)
     return circs_to_return
 
-def odr_compuncomp_circuits_dt(lattice, Js, hs, lambdas, final_time, dt, steps, backend, g=None, string_qubits=None, layout_first_or_all=None, x_basis=False, forbidden_qubits=[], barriers=False):
-    to_construct_layouts = get_layouts(lattice, backend, layout_first_or_all, forbidden_qubits)
+def odr_compuncomp_circuits_dt(lattice, Js, hs, lambdas, final_time, dt, steps, backend, g=None, string_qubits=None, layouts=None, x_basis=False, barriers=False):
     t_arr = np.linspace(0, final_time, steps+1)
     nlayers_arr = (t_arr // dt + 1).astype(int)
     odd_layers = ~np.equal(nlayers_arr % 2, 0)
     nlayers_arr[odd_layers] = nlayers_arr[odd_layers] + 1
     dt_arr = t_arr / nlayers_arr
     circs_to_return = []
-    for layout in to_construct_layouts:
+    for layout in layouts:
         layout = np.array(layout)
         trotter_pm = generate_preset_pass_manager(optimization_level=0, backend=backend, initial_layout=layout)
         if string_qubits is None:
