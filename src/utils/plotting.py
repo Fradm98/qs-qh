@@ -226,3 +226,72 @@ def plot_circuit_arr_depth(circuit_arr, x_ticks=None, x_label=None, filepath="")
         plt.savefig(filepath, dpi=300, facecolor="none")
     plt.show()
     plt.rcdefaults()
+
+def plot_individual_qubits_observable_evolution(observable_matrix, observable_std_matrix=None, ylabel=None, cmap=None, x_ticks=None, x_label=None, filepath=None):
+    observable_matrix = np.array(observable_matrix)
+    if observable_std_matrix is not None:
+        observable_std_matrix = np.array(observable_std_matrix)
+        if observable_matrix.shape != observable_std_matrix.shape:
+            raise ValueError("Observable matrix and standard deviation matrix must have the same shape")
+    
+    if cmap is None:
+        cmap = plt.get_cmap("Set2")
+    plt.rc("text", usetex=True)
+    plt.rc("font", size=20, family="serif", weight="bold")
+    fig, ax = plt.subplots(figsize=[9, 6])
+    for i in range(observable_matrix.shape[1]):
+        color = cmap((i % 8)/8)
+        y = observable_matrix[:, i]
+        if observable_std_matrix is not None:
+            yerr = observable_std_matrix[:, i]
+            plt.errorbar(x_ticks, y, yerr=yerr, fmt="o--", markersize=12, markeredgecolor="black", color=color, label=f"Qubit {i}")
+        else:
+            plt.plot(x_ticks, y, "o--", markersize=12, markeredgecolor="black", color=color, label=f"Qubit {i}")
+
+    plt.xticks(*x_ticks if x_ticks is not None else None)
+    plt.xlabel(x_label)
+    plt.ylabel(ylabel)
+    plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
+    plt.tight_layout()
+    if filepath:
+        plt.savefig(filepath, dpi=300, facecolor="none")
+    plt.show()
+    plt.rcdefaults()
+
+def plot_average_qubits_observable_evolution(observable_matrix, average_qubits, observable_std_matrix=None, ylabel=None, cmap=None, x_ticks=None, x_label=None, filepath=None):
+    observable_matrix = np.array(observable_matrix)
+    if observable_std_matrix is not None:
+        observable_std_matrix = np.array(observable_std_matrix)
+        if observable_matrix.shape != observable_std_matrix.shape:
+            raise ValueError("Observable matrix and standard deviation matrix must have the same shape")
+        
+    average_qubits = np.array(average_qubits)
+    if len(average_qubits.shape) != 2:
+        raise ValueError("average_qubits must be a 2D array")
+    
+    average_observable_matrix = np.zeros(average_qubits.shape[0], observable_matrix.shape[0])
+    for i, average_qubits_arr in enumerate(average_qubits):
+        this_reduced_observable_matrix = observable_matrix[:, average_qubits_arr]
+        average_observable_matrix[:, i] = np.mean(this_reduced_observable_matrix, axis=1)
+    
+    if cmap is None:
+        cmap = plt.get_cmap("Set2")
+    plt.rc("text", usetex=True)
+    plt.rc("font", size=20, family="serif", weight="bold")
+    fig, ax = plt.subplots(figsize=[9, 6])
+    y = np.mean(observable_matrix, axis=1)
+    if observable_std_matrix is not None:
+        yerr = np.mean(observable_std_matrix, axis=1)
+        plt.errorbar(x_ticks, y, yerr=yerr, fmt="o--", markersize=12, markeredgecolor="black", color=cmap(0.01), label="Average")
+    else:
+        plt.plot(x_ticks, y, "o--", markersize=12, markeredgecolor="black", color=cmap(0.01), label="Average")
+
+    plt.xticks(*x_ticks if x_ticks is not None else None)
+    plt.xlabel(x_label)
+    plt.ylabel(ylabel)
+    plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
+    plt.tight_layout()
+    if filepath:
+        plt.savefig(filepath, dpi=300, facecolor="none")
+    plt.show()
+    plt.rcdefaults()
