@@ -216,7 +216,7 @@ def execute_sampler_batch(backend, sampler_opt_dicts, transpiled_circuits, extra
     job_objs = []
     executed_circuits = []
 
-    if batch is not None:
+    if batch is None:
         batch = Batch(backend=backend)
 
     if extra_circuits is not None:
@@ -238,25 +238,7 @@ def execute_sampler_batch(backend, sampler_opt_dicts, transpiled_circuits, extra
             this_circ = check_and_measure_active_qubits(circ)
             job_objs.append(sampler.run([this_circ]))
 
-    batch.close()
-
-    # DEBUG: Comment above and uncomment below
-    # if extra_circuits is not None:
-    #     try:
-    #         executed_circuits += extra_circuits
-    #     except ValueError:
-    #         executed_circuits += extra_circuits.tolist()
-    #     for circ in extra_circuits:
-    #         this_circ = check_and_measure_active_qubits(circ)
-    #         job_objs.append("Success")
-    # try:
-    #     executed_circuits += transpiled_circuits
-    # except ValueError:
-    #     executed_circuits += transpiled_circuits.tolist()
-    # for sampler_opt_dict in sampler_opt_dicts:
-    #     for circ in transpiled_circuits:
-    #         this_circ = check_and_measure_active_qubits(circ)
-    #         job_objs.append("Success")
+    if batch is None: batch.close()
 
     if job_db is not None:
         job_ids = [job.job_id() for job in job_objs]

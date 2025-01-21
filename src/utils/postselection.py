@@ -725,6 +725,8 @@ def execute_postselected_sampler_batch(backend, sampler_opt_dict, transpiled_cir
         job_objs.append(this_jobs)
     job_objs = np.array(job_objs)
 
+    batch.close()
+
     # Diagonalize each non-diagonal observable and send a batch of jobs to avoid long circuits
     for observable in non_diagonal_observables:
         raise NotImplementedError("Only supports diagonal observables")
