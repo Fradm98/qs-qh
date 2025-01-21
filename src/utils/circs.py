@@ -5,6 +5,7 @@ from qiskit.transpiler import PassManager, StagedPassManager, Layout
 from qiskit.dagcircuit import DAGCircuit
 from qiskit import QuantumCircuit, qpy
 import numpy as np
+import re
 import os
 
 def count_non_idle_qubits(circ):
@@ -118,3 +119,49 @@ def generate_and_save_circs(filepath, circs_function, *circs_func_args):
         circs = circs_function(*circs_func_args)
         save_circs(filepath, circs)
     return circs
+
+def save_many_layout_circs(filepath, circuit_matrix):
+    nlayouts = len(circuit_matrix)
+    flatten_circuits = []
+    for circ_arr in circuit_matrix:
+        flatten_circuits += circ_arr
+    flatten_circuits[0].metadata = {"nlayouts": nlayouts}
+    save_circs(filepath, flatten_circuits)
+
+def load_many_layout_circs(filepath):
+    circuits = load_circs(filepath)
+    nlayouts = circuits[0].metadata["nlayouts"]
+    circuits_matrix = []
+    len_each_layout_circs = len(circuits) // nlayouts
+    for i in range(nlayouts):
+        circuits_matrix.append(circuits[i*len_each_layout_circs:(i+1)*len_each_layout_circs])
+    return circuits_matrix
+
+def iterate_nested_list(nested_list):
+    for element in nested_list:
+        if isinstance(element, list) or isinstance(element, tuple):
+            yield from iterate_nested_list(element)
+        else:
+            yield element
+
+def numpy_array_of_circuits(circuits):
+    dimensions = 0
+    last_element = circuits
+    dimensions_length = []
+    if isinstance(last_element, QuantumCircuit):
+        arr = np.array([], dtype=object)
+        arr.append(last_element)
+        return arr
+    while not isinstance(last_element, QuantumCircuit):
+        try:
+            dimensions_length.append(len(last_element))
+            last_element = last_element[0]
+            dimensions += 1
+        except TypeError:
+            raise TypeError("circuits is not a list of circuits")
+    arr = np.empty(dimensions_length, dtype=object)
+    dimensions_length = np.array(dimensions_length)
+    for i, qc in enumerate(iterate_nested_list(circuits)):
+        indices = np.unravel_index(i, dimensions_length)
+        arr[indices] = qc
+    return arr
