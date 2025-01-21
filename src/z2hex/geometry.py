@@ -87,13 +87,21 @@ class HeavyHexLattice:
     @cached_property
     def node_coords(self):
         return list(self.vertices.keys())
+    
+    @cached_property
+    def node_qbinds(self):
+        return [i for i, coords in enumerate(self.coords) if coords in self.node_coords]
 
     @cached_property
     def edge_coords(self):
         return list(self.edges.keys())
+    
+    @cached_property
+    def edge_qbinds(self):
+        return [i for i, coords in enumerate(self.coords) if coords in self.edge_coords]
 
     def coords_to_logical_qb(self, coords):
-        if len(coords) == 2:
+        if isinstance(coords, tuple):
             coords = [tuple(coords)]
         to_return = [self.coords.index((coord[0], coord[1])) for coord in coords]
         return to_return if len(to_return) > 1 else to_return[0]
@@ -258,6 +266,60 @@ class HeavyHexLattice:
                         elif layout not in layouts:
                             layouts.append(layout)
         return layouts
+    
+    def line_of_qubits(self, initial_qubit, dvaxis_angle):
+        """Returns the list of qubits corresponding to a line in the lattice.
+           The line is defined by an initial qubit and a direction parameter than can take these values:
+            -1: Horizontal
+            0: Vertical
+            n > 0: Horizontal angle in terms of qubits advanced in the horizontal direction per plaquette"""
+        try:
+            initial_qubit_coords = self.coords[initial_qubit]
+        except IndexError:
+            ValueError("Initial qubit is not in the lattice")
+        if dvaxis_angle < -1:
+            raise ValueError("dvaxis_angle must be -1 for horizontal, 0 for vertical or a positive integer for a diagonal line")
+        if dvaxis_angle == -1:
+            def new_coords_func(coords):
+                candidate = (coords[0], coords[1]+1)
+                if candidate in self.coords:
+                    return candidate
+                else:
+                    return None
+        elif dvaxis_angle == 0:
+            def new_coords_func(coords):
+                candidate = (coords[0]+1, coords[1])
+                if candidate in self.coords:
+                    return candidate
+                else:
+                    return None
+        else:
+            def new_coords_func(coords):
+                final_candidate = (coords[0]+1, coords[1]+dvaxis_angle)
+                middle_candidate = (coords[0]+0.5, coords[1]+dvaxis_angle/2)
+                to_return = []
+                if middle_candidate in self.coords:
+                    to_return.append(middle_candidate)
+                if final_candidate in self.coords:
+                    to_return.append(final_candidate)
+                if len(to_return) < 2:
+                    if len(to_return) == 1:
+                        return to_return[0]
+                    else:
+                        return None
+                else:
+                    return to_return
+                
+        line_coords = [initial_qubit_coords]
+        next_coord = new_coords_func(line_coords[-1])
+        while next_coord is not None:
+            if isinstance(next_coord, tuple):
+                line_coords.append(next_coord)
+            else:
+                line_coords += next_coord
+            next_coord = new_coords_func(line_coords[-1])
+        line_qbinds = self.coords_to_logical_qb(line_coords)
+        return line_qbinds
 
     def __len__(self):
         return len(self.coords)
@@ -310,6 +372,57 @@ class HeavyHexLattice:
             ax.invert_xaxis()
         plt.ylim([-0.2, self.max_y+0.2])
         plt.tight_layout()
+        plt.rcdefaults()
+
+    def plot_line_of_qubits(self, line_of_qubits, scale=1.5, number_qubits=False, join_line=True, color=None, filepath=""):
+        plt.rc("font", family="serif")
+        vertex_x = np.array([v[1] for v in sorted(list(self.vertices.keys()))], dtype=int)
+        vertex_y = np.array([self.max_y - v[0] for v in sorted(list(self.vertices.keys()))], dtype=int)
+        edges_endpoints_x = np.array([[np.floor(e[1]), np.ceil(e[1])] for e in sorted(list(self.edges.keys()))], dtype=int)
+        edges_endpoints_y = np.array([[self.max_y - np.floor(e[0]), self.max_y - np.ceil(e[0])] for e in sorted(list(self.edges.keys()))], dtype=int)
+        edges_boxes_x = np.mean(edges_endpoints_x, axis=1)
+        edges_boxes_y = np.mean(edges_endpoints_y, axis=1)
+
+        line_edge_qbinds = np.array([qbind for qbind in line_of_qubits if is_edge_coords(self.coords[qbind])])
+        line_vertex_qbinds = np.array(sorted(list(set(line_of_qubits) - set(line_edge_qbinds))))
+        non_line_edge_qbinds = np.array(sorted(list(set(self.edge_qbinds) - set(line_edge_qbinds))))
+        non_line_vertex_qbinds = np.array(sorted(list(set(self.node_qbinds) - set(line_vertex_qbinds))))
+
+        line_edge_listinds = [np.where(self.edge_qbinds == qbind)[0][0] for qbind in line_edge_qbinds] if len(line_edge_qbinds) > 0 else []
+        line_vertex_listinds = [np.where(self.node_qbinds == qbind)[0][0] for qbind in line_vertex_qbinds] if len(line_vertex_qbinds) > 0 else []
+        non_line_edge_listinds = [np.where(self.edge_qbinds == qbind)[0][0] for qbind in non_line_edge_qbinds] if len(non_line_edge_qbinds) > 0 else []
+        non_line_vertex_listinds = [np.where(self.node_qbinds == qbind)[0][0] for qbind in non_line_vertex_qbinds] if len(non_line_vertex_qbinds) > 0 else []
+
+        fig, ax = plt.subplots(figsize=[scale*self.max_x, scale*self.max_y])
+        if color is None: color = "#2f64f7"
+        ax.set_aspect('equal')
+        for exs, eys in zip(edges_endpoints_x, edges_endpoints_y):
+            plt.plot(exs, eys, color="black")
+        plt.scatter(vertex_x[line_vertex_listinds], vertex_y[line_vertex_listinds], 350*scale, marker="o", c=color, edgecolors="black", zorder=2)
+        plt.scatter(vertex_x[non_line_vertex_listinds], vertex_y[non_line_vertex_listinds], 350*scale, marker="o", c="white", edgecolors="black", zorder=2)
+        plt.scatter(edges_boxes_x[line_edge_listinds], edges_boxes_y[line_edge_listinds], 400*scale, marker=(4, 0, 45), c=color, edgecolors="black", zorder=2)
+        plt.scatter(edges_boxes_x[non_line_edge_listinds], edges_boxes_y[non_line_edge_listinds], 400*scale, marker=(4, 0, 45), c="white", edgecolors="black", zorder=2)
+        if join_line:
+            for i in range(len(line_of_qubits)-1):
+                first_point_coords = self.coords[line_of_qubits[i]]
+                second_point_coords = self.coords[line_of_qubits[i+1]]
+                plt.plot([first_point_coords[1], second_point_coords[1]], [self.max_y - first_point_coords[0], self.max_y - second_point_coords[0]], color=color, zorder=1, linewidth=3)
+        ttransform = mpl.transforms.Affine2D().translate(0, -1*scale)
+        if number_qubits:
+            labels = [str(i) for i in range(len(self.coords))]
+            for i, (y, x) in enumerate(self.coords):
+                text = plt.text(x, self.max_y - y, labels[i], horizontalalignment="center", verticalalignment="center", fontdict={"size": 5.5*scale})
+                text.set_transform(text.get_transform() + ttransform)
+        else:
+            line_of_qubit_coords = [self.coords[qbind] for qbind in line_of_qubits]
+            for i, (y, x) in enumerate(line_of_qubit_coords):
+                text = plt.text(x, self.max_y - y, self.coords_to_logical_qb((y, x)), horizontalalignment="center", verticalalignment="center", fontdict={"size": 5.5*scale}, color="white")
+                text.set_transform(text.get_transform() + ttransform)
+        plt.axis("off")
+        plt.ylim([-0.2, self.max_y+0.2])
+        plt.tight_layout()
+        if filepath:
+            plt.savefig(filepath, dpi=300, facecolor="none")
         plt.rcdefaults()
 
 def is_edge_coords(coords):
