@@ -685,13 +685,14 @@ def execute_postselected_sampler_batch(backend, sampler_opt_dict, transpiled_cir
 
     if len(transpiled_circuits.shape) > 1:
         shots = sampler_opt_dict.get("default_shots", 1)
-        shots_per_layout = shots // transpiled_circuits.shape[0] + 1
+        shots_per_layout = shots // transpiled_circuits.shape[0]
     else:
         shots_per_layout = sampler_opt_dict.get("default_shots", 1)
     
     if shots_per_layout > max_shots:
         nrepetitions = shots_per_layout // max_shots
-        nrepetitions = nrepetitions + 1 if nrepetitions == 0 else nrepetitions
+        if nrepetitions == 0:
+            nrepetitions = 1
         last_rep_shots = shots % max_shots
         sampler_options_per_layout = []
         for i in range(nrepetitions):
@@ -962,7 +963,9 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
         shots_per_layout = sampler_opt_dict.get("default_shots", 1)
 
     if shots_per_layout > max_shots:
-        nrepetitions = shots_per_layout // max_shots + 1
+        nrepetitions = shots_per_layout // max_shots
+        if nrepetitions == 0:
+            nrepetitions = 1
     else:
         nrepetitions = 1
 
@@ -998,7 +1001,7 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
         newdims = (transpiled_circuits.shape[0], odr_circuits.shape[1] + nrepetitions*transpiled_circuits.shape[1])
     else:
         newdims = (transpiled_circuits.shape[0], nrepetitions*transpiled_circuits.shape[1])
-    jobs = np.array(jobs).reshape(newdims)
+    jobs = np.array(jobs, dtype=object).reshape(newdims)
     jobs_layout = np.array(jobs_layout).reshape((*newdims, nqubits))
 
     if odr_circuits is not None:
@@ -1036,7 +1039,7 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
             for dodrjob in this_layout_odr_jobs:
                 if os.path.isdir(jobs_result_folder):
                     if dodrjob is not None:
-                        odr_samples_dict = list(dodrjob.data.values())[0].get_counts()
+                        odr_samples_dict = list(dodrjob[0].data.values())[0].get_counts()
                     else:
                         odr_samples_dict = {}
                 else:
@@ -1052,10 +1055,10 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
     diagonal_real_jobs = real_jobs[:, :nrepetitions*transpiled_circuits.shape[1]]
     for this_layout_real_jobs in diagonal_real_jobs:
         this_layout_samples_dicts = []
-        for drealjob in this_layout_real_jobs:
+        for i, drealjob in enumerate(this_layout_real_jobs):
             if os.path.isdir(jobs_result_folder):
                 if drealjob is not None:
-                    real_samples_dict = list(drealjob.data.values())[0].get_counts()
+                    real_samples_dict = list(drealjob[0].data.values())[0].get_counts()
                 else:
                     real_samples_dict = {}
             else:
@@ -1071,8 +1074,8 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
         for ilayout in range(transpiled_circuits.shape[0]):
             for icirc in range(transpiled_circuits.shape[1]):
                 this_circ_real_samples_dict = [real_samples_dicts[ilayout, icirc + j*transpiled_circuits.shape[1]] for j in range(nrepetitions)]
-                combined_real_samples_dict = combined_real_samples_dict(*this_circ_real_samples_dict)
-                real_samples_dicts[ilayout, icirc] = combine_samples_dicts
+                combined_real_samples_dict = combine_samples_dicts(*this_circ_real_samples_dict)
+                real_samples_dicts[ilayout, icirc] = combined_real_samples_dict
         real_samples_dicts = real_samples_dicts[:, :transpiled_circuits.shape[1]]
 
     postselected_real_samples_dicts = []
