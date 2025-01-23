@@ -120,3 +120,18 @@ def local_obs_anim(site_gauge_observable_matrix, lattice, step_to_title_function
     
     subprocess.run(["ffmpeg", "-framerate", str(fps), "-i", os.path.join(frames_folder_path, f"{anim_name}_%0{filepath_digits}d.png"), "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", filepath])
     shutil.rmtree(frames_folder_path)
+
+def plot_configuration_sample_ration(lattice, logical_samples_dict, configurations, colors=None, labels=None, filepath=""):
+    configurations = np.array(configurations)
+    if colors is not None:
+        cmap = plt.get_cmap("Set2")
+        colors = [cmap(i % 8) for i in range(len(configurations))]
+    if labels is None:
+        labels = [f"Conf. {i}" for i in range(len(configurations))]
+    plt.rc("text", usetex=True)
+    plt.rc("font", size=20, family="serif", weight="bold")
+    for config in configurations:
+        config_string = "".join(["0" if i in config else "1" for i in range(len(lattice))])[::-1]
+        config_ratio_dynamics = np.zeros(len(logical_samples_dict))
+        for time_samples in logical_samples_dict:
+            config_ratio_dynamics[time_samples.time] = time_samples[config_string] / sum(time_samples.values())
