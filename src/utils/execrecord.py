@@ -42,8 +42,7 @@ class ExecutionRecord:
 
     def add_separator(self, lines=3):
         for i in range(lines):
-            self.df.loc[-1] = [None]*self.columns
+            self.df.loc[-1] = [None]*len(self.columns)
             self.df.index = self.df.index + 1
             self.df = self.df.sort_index()
-            self.save()
         self.save()
