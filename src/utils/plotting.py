@@ -334,7 +334,7 @@ def plot_average_qubits_observable_evolution(observable_matrix, average_qubits, 
     else:
         x = np.arange(observable_matrix.shape[0])
     for i in range(len(average_qubits)):
-        color = cmap((i % 8)/8)
+        color = cmap((i % 8))
         if observable_std_matrix is not None:
             plt.errorbar(x, average_observable_matrix[:, i], yerr=average_observable_std_matrix[:, i], fmt="--o", marker=markers[i] if markers is not None else "o", markersize=12, markeredgecolor="black", color=color, label="Average")
         else:
