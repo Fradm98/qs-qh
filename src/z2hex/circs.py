@@ -135,7 +135,7 @@ def SecondOrderTrotter(lattice, Js, hs, lambdas, t_total, layers, g=None, x_basi
         total_interaction_propagator = TotalInteractionPropagator(lattice, lambdas, t_layer, x_basis).decompose()
     else:
         total_interaction_propagator = TotalInteractionPropagatorDD(lattice, lambdas, g, t_layer, x_basis)
-    total_single_body_propagator = TotalSingleBodyPropagator(lattice, Js, hs, t_total, x_basis)
+    total_single_body_propagator = TotalSingleBodyPropagator(lattice, Js, hs, t_total/2, x_basis)
     layer = total_single_body_propagator.compose(total_interaction_propagator).compose(total_single_body_propagator)
     if barriers: layer.barrier()
     return layer.repeat(layers).decompose()
@@ -281,6 +281,24 @@ def string_quench_simulation_circuits_dt(lattice, Js, hs, lambdas, string_qubits
     return circs_to_return
 
 def odr_compuncomp_circuits_dt(lattice, Js, hs, lambdas, final_time, dt, steps, backend, g=None, string_qubits=None, layouts=None, x_basis=False, barriers=False):
+    Js = np.array(Js)
+    hs = np.array(hs)
+    lambdas = np.array(lambdas)
+    if not len(Js.shape) == len(hs.shape) == len(lambdas.shape):
+        raise ValueError("The Js, hs and lambdas parameters must have the same shape")
+    if len(Js.shape) == 0:
+        Js = Js*np.ones((steps, len(lattice.node_coords)))
+        hs = hs*np.ones((steps, len(lattice.edge_coords)))
+        lambdas = lambdas*np.ones((steps, len(lattice.edge_coords)))
+    elif len(Js.shape) == 1:
+        Js = np.repeat(Js.reshape(1, -1), steps, axis=0)
+        hs = np.repeat(hs.reshape(1, -1), steps, axis=0)
+        lambdas = np.repeat(lambdas.reshape(1, -1), steps, axis=0)
+    elif len(Js.shape) == 2:
+        if Js.shape[0] != steps:
+            raise ValueError("The number of rows in the Js, hs and lambdas parameters must be equal to the number of steps")
+    else:
+        raise ValueError("The parameters Js, hs and lambdas must be scalars, vectors or matrices")
     t_arr = np.linspace(0, final_time, steps+1)
     nlayers_arr = (t_arr // dt + 1).astype(int)
     odd_layers = ~np.equal(nlayers_arr % 2, 0)
@@ -304,8 +322,8 @@ def odr_compuncomp_circuits_dt(lattice, Js, hs, lambdas, final_time, dt, steps, 
         this_layout_circs = [first_physical_circuit]
         sqcancel_pm = PassManager([Optimize1qGates(target=backend.target), Optimize1qGatesDecomposition(target=backend.target), Optimize1qGatesSimpleCommutation(target=backend.target)])
         for i in range(steps):
-            forwards_trotter_layer = SecondOrderTrotter(lattice, Js, hs, lambdas, dt_arr[i+1], 1, g, x_basis, barriers)
-            backwards_trotter_layer = SecondOrderTrotter(lattice, Js, hs, lambdas, -dt_arr[i+1], 1, g, x_basis, barriers)
+            forwards_trotter_layer = SecondOrderTrotter(lattice, Js[i], hs[i], lambdas[i], dt_arr[i+1], 1, g, x_basis, barriers)
+            backwards_trotter_layer = SecondOrderTrotter(lattice, Js[i], hs[i], lambdas[i], -dt_arr[i+1], 1, g, x_basis, barriers)
             forwards_physical_trotter_layer = trotter_pm.run(forwards_trotter_layer)
             backwards_physical_trotter_layer = trotter_pm.run(backwards_trotter_layer)
             this_time_circuit = forwards_physical_trotter_layer.repeat(nlayers_arr[i+1]//2)
