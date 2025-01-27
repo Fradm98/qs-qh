@@ -289,9 +289,9 @@ def plot_individual_qubits_observable_evolution(observable_matrix, observable_st
         y = observable_matrix[:, i]
         if observable_std_matrix is not None:
             yerr = observable_std_matrix[:, i]
-            plt.errorbar(x, y, yerr=yerr, fmt="--", marker=markers[i] if markers is not None else "o", markersize=12, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}")
+            plt.errorbar(x, y, yerr=yerr, fmt="--", marker=markers[i] if markers is not None else "o", markersize=10, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}")
         else:
-            plt.plot(x, y, "--", marker=markers[i] if markers is not None else "o", markersize=12, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}")
+            plt.plot(x, y, "--", marker=markers[i] if markers is not None else "o", markersize=10, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}")
     plt.xlabel(x_label)
     plt.ylabel(ylabel, labelpad=10)
     plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
@@ -304,7 +304,7 @@ def plot_individual_qubits_observable_evolution(observable_matrix, observable_st
     plt.show()
     plt.rcdefaults()
 
-def plot_average_qubits_observable_evolution(observable_matrix, average_qubits, observable_std_matrix=None, ylabel=None, cmap=None, x_ticks=None, x_label=None, markers=None, title="", filepath=None):
+def plot_average_qubits_observable_evolution(observable_matrix, average_qubits, observable_std_matrix=None, cmap=None, x_ticks=None, x_label=None, y_ticks=None, ylabel=None, markers=None, funclabels=None, title="", legend=True, filepath=None):
     observable_matrix = np.array(observable_matrix)
     if observable_std_matrix is not None:
         observable_std_matrix = np.array(observable_std_matrix)
@@ -333,15 +333,20 @@ def plot_average_qubits_observable_evolution(observable_matrix, average_qubits, 
         x = np.linspace(x_ticks[0], x_ticks[-1], observable_matrix.shape[0])
     else:
         x = np.arange(observable_matrix.shape[0])
+    if funclabels is None:
+        funclabels = [f"Line {i}" for i in range(len(average_qubits))]
     for i in range(len(average_qubits)):
         color = cmap((i % 8))
         if observable_std_matrix is not None:
-            plt.errorbar(x, average_observable_matrix[:, i], yerr=average_observable_std_matrix[:, i], fmt="--o", marker=markers[i] if markers is not None else "o", markersize=12, markeredgecolor="black", color=color, label="Average")
+            plt.errorbar(x, average_observable_matrix[:, i], yerr=average_observable_std_matrix[:, i], fmt="--", marker=markers[i] if markers is not None else "o", markersize=10, markeredgecolor="black", color=color, label=funclabels[i])
         else:
-            plt.plot(x, average_observable_matrix[:, i], "--o", marker=markers[i] if markers is not None else "o", markersize=12, markeredgecolor="black", color=color, label="Average")
+            plt.plot(x, average_observable_matrix[:, i], "--", marker=markers[i] if markers is not None else "o", markersize=10, markeredgecolor="black", color=color, label=funclabels[i])
     plt.xlabel(x_label)
     plt.ylabel(ylabel, labelpad=10)
+    if y_ticks is not None:
+        plt.yticks(y_ticks)
     plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
+    if legend: plt.legend(loc="best", fontsize=16)
     if title:
         plt.title(title, pad=10)
     plt.tight_layout()
