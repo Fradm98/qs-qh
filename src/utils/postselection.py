@@ -1039,7 +1039,7 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
             for dodrjob in this_layout_odr_jobs:
                 if os.path.isdir(jobs_result_folder):
                     if dodrjob is not None:
-                        odr_samples_dict = list(dodrjob[0].data.values())[0].get_counts()
+                        odr_samples_dict = list(dodrjob.data.values())[0].get_counts()
                     else:
                         odr_samples_dict = {}
                 else:
@@ -1058,7 +1058,7 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
         for i, drealjob in enumerate(this_layout_real_jobs):
             if os.path.isdir(jobs_result_folder):
                 if drealjob is not None:
-                    real_samples_dict = list(drealjob[0].data.values())[0].get_counts()
+                    real_samples_dict = list(drealjob.data.values())[0].get_counts()
                 else:
                     real_samples_dict = {}
             else:
