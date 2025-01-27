@@ -271,16 +271,14 @@ class HeavyHexLattice:
     def line_of_qubits(self, initial_qubit, dvaxis_angle):
         """Returns the list of qubits corresponding to a line in the lattice.
            The line is defined by an initial qubit and a direction parameter than can take these values:
-            -1: Horizontal
+            "h": Horizontal
             0: Vertical
             n > 0: Horizontal angle in terms of qubits advanced in the horizontal direction per plaquette"""
         try:
             initial_qubit_coords = self.coords[initial_qubit]
         except IndexError:
             ValueError("Initial qubit is not in the lattice")
-        if dvaxis_angle < -1:
-            raise ValueError("dvaxis_angle must be -1 for horizontal, 0 for vertical or a positive integer for a diagonal line")
-        if dvaxis_angle == -1:
+        if dvaxis_angle == "h":
             def new_coords_func(coords):
                 candidate = (coords[0], coords[1]+1)
                 if candidate in self.coords:
@@ -437,7 +435,7 @@ class HeavyHexLattice:
         edges_boxes_y = np.mean(edges_endpoints_y, axis=1)
 
         if isinstance(lines_of_qubits, list) and not all(isinstance(line, list) for line in lines_of_qubits):
-            self.plot_line_of_qubits(lines_of_qubits[0], scale, number_qubits, join_lines[0] if isinstance(join_lines, [list, tuple]) else join_lines, plt.get_cmap("Set1")[0] if colors is None else colors[0], filepath)
+            self.plot_line_of_qubits(lines_of_qubits[0], scale, number_qubits, join_lines[0] if isinstance(join_lines, (list, tuple)) else join_lines, plt.get_cmap("Set1")[0] if colors is None else colors[0], filepath)
         else:
             if colors is None:
                 cmap = plt.get_cmap("Set1")
@@ -445,7 +443,6 @@ class HeavyHexLattice:
             join_lines = np.array(join_lines)
             if len(join_lines.shape) == 0:
                 join_lines = join_lines*np.ones(len(lines_of_qubits), dtype=bool)
-                join_lines = np.prod(join_lines, axis=-1)
             all_highlighted_qubits = []
             for line_of_qubits in lines_of_qubits:
                 all_highlighted_qubits += line_of_qubits
@@ -458,8 +455,8 @@ class HeavyHexLattice:
             ax.set_aspect('equal')
             for exs, eys in zip(edges_endpoints_x, edges_endpoints_y):
                 plt.plot(exs, eys, color="black")
-            plt.scatter(vertex_x[non_highlighted_vertices_listind], vertex_y[non_highlighted_vertices_listind], 350*scale, marker="o", c="white", edgecolors="black", zorder=2)
-            plt.scatter(edges_boxes_x[non_highlighted_edges_listind], edges_boxes_y[non_highlighted_edges_listind], 400*scale, marker=(4, 0, 45), c="white", edgecolors="black", zorder=2)
+            plt.scatter(vertex_x[non_highlighted_vertices_listind], vertex_y[non_highlighted_vertices_listind], 350*scale, marker="o", color="white", edgecolors="black", zorder=2)
+            plt.scatter(edges_boxes_x[non_highlighted_edges_listind], edges_boxes_y[non_highlighted_edges_listind], 400*scale, marker=(4, 0, 45), color="white", edgecolors="black", zorder=2)
             for i, line_of_qubits in enumerate(lines_of_qubits):
                 this_line_vertex_inds = np.array([qbind for qbind in line_of_qubits if not is_edge_coords(self.coords[qbind])])
                 this_line_edge_inds = np.array([qbind for qbind in line_of_qubits if is_edge_coords(self.coords[qbind])])
