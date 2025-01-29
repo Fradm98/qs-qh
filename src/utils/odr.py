@@ -17,7 +17,7 @@ def renormalize_observable(measured_observable_arr, p_arr, observable_trace, nqu
     try:
         one_mask = np.isclose(p_arr, 1)
         p_arr[one_mask] = np.nan
-        candidate = (np.array(measured_observable_arr) - np.array(p_arr)*observable_trace/2**nqubits) / (1 - np.array(p_arr))
+        candidate = ((np.array(measured_observable_arr) - np.array(p_arr)*observable_trace/2**nqubits) / (1 - np.array(p_arr))).astype(float)
         if p_std is not None: candidate_std = np.abs((np.array(measured_observable_arr) - np.array(p_arr)*observable_trace/2**nqubits)/(1 - np.array(p_arr))**2 - observable_trace/2**nqubits/(1-np.array(p_arr)))*p_std
         if observable_range is not None:
             mask = np.logical_or(candidate < (1+nantol)*observable_range[0] - nantol, candidate > (1+nantol)*observable_range[1] + nantol)
