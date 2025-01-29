@@ -837,7 +837,10 @@ def get_recovered_postselected_samples_dict(samples_dict, postselection_ops, cir
 
 def measure_diagonal_observables(samples_dict, diagonal_observables, circ_layout=None, return_std=False):
     if len(samples_dict) == 0:
-        return np.full(len(diagonal_observables), np.nan)
+        if return_std:
+            return np.full(len(diagonal_observables), np.nan), np.full(len(diagonal_observables), np.nan)
+        else: 
+            return np.full(len(diagonal_observables), np.nan)
     nqubits = len(diagonal_observables[0])
     for observable in diagonal_observables:
         if len(observable) != nqubits:
@@ -860,7 +863,7 @@ def measure_diagonal_observables(samples_dict, diagonal_observables, circ_layout
     strings_expectation_times_weights = strings_expectation_values * weights.reshape((len(samples_dict), 1))
     expectation_values = np.sum(strings_expectation_times_weights, axis=0)
     if return_std:
-        std_weights = np.array(list(samples_dict.values()))/(np.sum(list(samples_dict.values())) + 1)
+        std_weights = np.array(list(samples_dict.values()))/np.sum(list(samples_dict.values()))
         to_sum = std_weights.reshape((len(samples_dict), 1))*(strings_expectation_values - expectation_values)**2
         std = np.sqrt(np.sum(to_sum, axis=0))
         return expectation_values, std
@@ -1039,12 +1042,18 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
             for dodrjob in this_layout_odr_jobs:
                 if os.path.isdir(jobs_result_folder):
                     if dodrjob is not None:
-                        odr_samples_dict = list(dodrjob.data.values())[0].get_counts()
+                        try:
+                            odr_samples_dict = dodrjob[0].data.c.get_counts()
+                        except AttributeError:
+                            odr_samples_dict = dodrjob[0].data.measure.get_counts()
                     else:
                         odr_samples_dict = {}
                 else:
                     try:
-                        odr_samples_dict = list(dodrjob.result()[0].data.values())[0].get_counts()
+                        try:
+                            odr_samples_dict = dodrjob.result()[0].data.c.get_counts()
+                        except AttributeError:
+                            odr_samples_dict = dodrjob.result()[0].data.measure.get_counts()
                     except RuntimeJobFailureError:
                         odr_samples_dict = {}
                 this_layout_samples_dicts.append(odr_samples_dict)
@@ -1058,12 +1067,21 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
         for i, drealjob in enumerate(this_layout_real_jobs):
             if os.path.isdir(jobs_result_folder):
                 if drealjob is not None:
-                    real_samples_dict = list(drealjob.data.values())[0].get_counts()
+                    try:
+                        try:
+                            real_samples_dict = drealjob[0].data.c.get_counts()
+                        except AttributeError:
+                            real_samples_dict = drealjob[0].data.measure.get_counts()
+                    except AttributeError:
+                        real_samples_dict = {}
                 else:
                     real_samples_dict = {}
             else:
                 try:
-                    real_samples_dict = list(drealjob.result()[0].data.values())[0].get_counts()
+                    try:
+                        real_samples_dict = drealjob.result()[0].data.c.get_counts()
+                    except AttributeError:
+                        real_samples_dict = drealjob.result()[0].data.measure.get_counts()
                 except RuntimeJobFailureError:
                     real_samples_dict = {}
             this_layout_samples_dicts.append(real_samples_dict)
@@ -1123,7 +1141,7 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
                 if return_std:
                     all_layouts_observable_std_matrix[ilayout, icirc, :] = real_expectation_values_std
                     all_layouts_raw_observable_std_matrix[ilayout, icirc, :] = raw_expectation_values_std
-        
+
     if odr_circuits is not None:
         observable_matrix = np.mean(all_layouts_observable_matrix, axis=0)
         real_observable_matrix = np.mean(all_layouts_real_observable_matrix, axis=0)
