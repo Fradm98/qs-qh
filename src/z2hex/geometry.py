@@ -558,25 +558,25 @@ class HeavyHexLattice:
                         complete_string_coords.append(node)
         return np.array(complete_string_coords)             
 
-def get_correlator_qubit_inds(strings):
-    correlator_qubit_inds = []
+def get_pair_qubit_inds(strings):
+    pair_qubit_inds = []
     for corr_type, string in enumerate(strings):
         if corr_type == 0:
             qubit_ind1 = string[0]
             for i in range((len(string)-1)//2):
                 qubit_ind2 = string[i+1]
-                correlator_qubit_inds.append((qubit_ind1, qubit_ind2))
+                pair_qubit_inds.append((qubit_ind1, qubit_ind2))
         elif corr_type == 1:
             qubit_ind1 = string[0]
             for i in range(len(string)-1):
                 qubit_ind2 = string[i+1]
-                correlator_qubit_inds.append((qubit_ind1, qubit_ind2))
+                pair_qubit_inds.append((qubit_ind1, qubit_ind2))
         else:
             qubit_ind1 = string[len(string)//2]
             for i in range((len(string)-1)//2):
                 qubit_ind2 = string[len(string)//2+i+1]
-                correlator_qubit_inds.append((qubit_ind1, qubit_ind2))
-    return correlator_qubit_inds
+                pair_qubit_inds.append((qubit_ind1, qubit_ind2))
+    return pair_qubit_inds
 
 def is_edge_coords(coords):
     if type(coords) == tuple:
