@@ -22,7 +22,7 @@ def pauli_xs_mean(nqubits):
     logical_observable = SparsePauliOp(paulistrs, coeffs)
     return logical_observable
 
-def correlator_z(nqubits, qubit_inds):
+def pauli_pair_z(nqubits, qubit_inds):
     qubit_ind1 = qubit_inds[0]
     qubit_ind2 = qubit_inds[1]
     if qubit_ind1 > nqubits:
@@ -31,7 +31,7 @@ def correlator_z(nqubits, qubit_inds):
         raise ValueError("qubit_ind2 must be in the interval [0, nqubits)")
     return Pauli("I"*qubit_ind1 + "Z" + "I"*(qubit_ind2 - qubit_ind1 - 1) + "Z" + "I"*(nqubits - qubit_ind2 - 1))
 
-def correlator_x(nqubits, qubit_inds):
+def pauli_pair_x(nqubits, qubit_inds):
     qubit_ind1 = qubit_inds[0]
     qubit_ind2 = qubit_inds[1]
     if qubit_ind1 > nqubits:

@@ -14,11 +14,11 @@ def pauli_zs_mean(lattice):
 def pauli_xs_mean(lattice):
     return chainops.pauli_xs_mean(len(lattice))
 
-def correlator_x(lattice, qubit_inds):
-    return chainops.correlator_x(len(lattice), qubit_inds)
+def pauli_pair_x(lattice, qubit_inds):
+    return chainops.pauli_pair_x(len(lattice), qubit_inds)
 
-def correlator_z(lattice, qubit_inds):
-    return chainops.correlator_z(len(lattice), qubit_inds)
+def pauli_pair_z(lattice, qubit_inds):
+    return chainops.pauli_pair_z(len(lattice), qubit_inds)
 
 def gauge_operator(lattice, node_coords, x_basis=False):
     if node_coords not in lattice.node_coords:
