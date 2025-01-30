@@ -10,6 +10,34 @@ import numpy as np
 import sys
 import os
 
+def luminance(*rgb):
+    """Calcula la luminancia relativa de un color."""
+    rgb = list(rgb)
+    for i in range(3):
+        if rgb[i] <= 0.03928:
+            rgb[i] = rgb[i] / 12.92
+        else:
+            rgb[i] = ((rgb[i] + 0.055) / 1.055) ** 2.4
+    return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722
+
+def contrast_ratio(l1, l2):
+    """Calcula la relación de contraste entre dos luminancias."""
+    if l1 > l2:
+        return (l1 + 0.05) / (l2 + 0.05)
+    else:
+        return (l2 + 0.05) / (l1 + 0.05)
+
+def best_text_color(*rgb):
+    """Determina si el texto blanco o negro se verá mejor sobre un color dado."""
+    lum = luminance(*rgb)
+    contrast_with_white = contrast_ratio(lum, luminance(1, 1, 1))
+    contrast_with_black = contrast_ratio(lum, luminance(0, 0, 0))
+    
+    if contrast_with_white > contrast_with_black:
+        return "white"
+    else:
+        return "black"
+
 def convert_jobs_to_site_gauge_matrix(jobs_arr):
     printed_warning_header = False
     first_success_index = 0
@@ -226,3 +254,104 @@ def plot_circuit_arr_depth(circuit_arr, x_ticks=None, x_label=None, filepath="")
         plt.savefig(filepath, dpi=300, facecolor="none")
     plt.show()
     plt.rcdefaults()
+
+def plot_individual_qubits_observable_evolution(observable_matrix, observable_std_matrix=None, ylabel=None, cmap=None, x_ticks=None, x_label=None, markers=None, funclabels=None, title="", legend=True, filepath=None):
+    observable_matrix = np.array(observable_matrix)
+    if observable_std_matrix is not None:
+        observable_std_matrix = np.array(observable_std_matrix)
+        if observable_matrix.shape != observable_std_matrix.shape:
+            raise ValueError("Observable matrix and standard deviation matrix must have the same shape")
+    if funclabels is not None:
+        try:
+            if len(funclabels) != observable_matrix.shape[1]:
+                raise ValueError("funclabels must have the same length as the number of qubits")
+        except TypeError:
+            raise ValueError("funclabels must have the same length as the number of qubits")
+    if markers is not None:
+        if len(markers) != observable_matrix.shape[1]:
+            raise ValueError("markers must have the same length as the number of qubits")
+    
+    if cmap is None:
+        cmap = plt.get_cmap("Set2")
+    plt.rc("text", usetex=True)
+    plt.rc("font", size=20, family="serif", weight="bold")
+    fig, ax = plt.subplots(figsize=[9, 6])
+    if x_ticks is not None:
+        if len(x_ticks.shape) == 1:
+            plt.xticks(x_ticks)
+        else:
+            plt.xticks(*x_ticks)
+        x = np.linspace(x_ticks[0], x_ticks[-1], observable_matrix.shape[0])
+    else:
+        x = np.arange(observable_matrix.shape[0])
+    for i in range(observable_matrix.shape[1]):
+        color = cmap((i % 8))
+        y = observable_matrix[:, i]
+        if observable_std_matrix is not None:
+            yerr = observable_std_matrix[:, i]
+            plt.errorbar(x, y, yerr=yerr, fmt="--", marker=markers[i] if markers is not None else "o", markersize=10, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}")
+        else:
+            plt.plot(x, y, "--", marker=markers[i] if markers is not None else "o", markersize=10, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}")
+    plt.xlabel(x_label)
+    plt.ylabel(ylabel, labelpad=10)
+    plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
+    if title:
+        plt.title(title, pad=10)
+    plt.tight_layout()
+    if legend: plt.legend(loc="best", fontsize=16)
+    if filepath:
+        plt.savefig(filepath, dpi=300, facecolor="none")
+    plt.show()
+    plt.rcdefaults()
+
+def plot_average_qubits_observable_evolution(observable_matrix, average_qubits, observable_std_matrix=None, cmap=None, x_ticks=None, x_label=None, y_ticks=None, ylabel=None, markers=None, funclabels=None, title="", legend=True, filepath=None):
+    observable_matrix = np.array(observable_matrix)
+    if observable_std_matrix is not None:
+        observable_std_matrix = np.array(observable_std_matrix)
+        if observable_matrix.shape != observable_std_matrix.shape:
+            raise ValueError("Observable matrix and standard deviation matrix must have the same shape")
+    
+    average_observable_matrix = np.zeros((observable_matrix.shape[0], len(average_qubits)))
+    if observable_std_matrix is not None: average_observable_std_matrix = np.zeros((observable_matrix.shape[0], len(average_qubits)))
+    for i, average_qubits_arr in enumerate(average_qubits):
+        this_reduced_observable_matrix = observable_matrix[:, average_qubits_arr]
+        average_observable_matrix[:, i] = np.nanmean(this_reduced_observable_matrix, axis=1)
+        if observable_std_matrix is not None:
+            this_reduced_observable_std_matrix = observable_std_matrix[:, average_qubits_arr]
+            average_observable_std_matrix[:, i] = np.nanmean(this_reduced_observable_std_matrix, axis=1)
+    
+    if cmap is None:
+        cmap = plt.get_cmap("Set2")
+    plt.rc("text", usetex=True)
+    plt.rc("font", size=20, family="serif", weight="bold")
+    fig, ax = plt.subplots(figsize=[9, 6])
+    if x_ticks is not None:
+        if len(x_ticks.shape) == 1:
+            plt.xticks(x_ticks)
+        else:
+            plt.xticks(*x_ticks)
+        x = np.linspace(x_ticks[0], x_ticks[-1], observable_matrix.shape[0])
+    else:
+        x = np.arange(observable_matrix.shape[0])
+    if funclabels is None:
+        funclabels = [f"Line {i}" for i in range(len(average_qubits))]
+    for i in range(len(average_qubits)):
+        color = cmap((i % 8))
+        if observable_std_matrix is not None:
+            plt.errorbar(x, average_observable_matrix[:, i], yerr=average_observable_std_matrix[:, i], fmt="--", marker=markers[i] if markers is not None else "o", markersize=10, markeredgecolor="black", color=color, label=funclabels[i])
+        else:
+            plt.plot(x, average_observable_matrix[:, i], "--", marker=markers[i] if markers is not None else "o", markersize=10, markeredgecolor="black", color=color, label=funclabels[i])
+    plt.xlabel(x_label)
+    plt.ylabel(ylabel, labelpad=10)
+    if y_ticks is not None:
+        plt.yticks(y_ticks)
+    plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
+    if legend: plt.legend(loc="best", fontsize=16)
+    if title:
+        plt.title(title, pad=10)
+    plt.tight_layout()
+    if filepath:
+        plt.savefig(filepath, dpi=300, facecolor="none")
+    plt.show()
+    plt.rcdefaults()
+

@@ -1,10 +1,11 @@
-from utils.circs import simplify_logical_circuits, count_non_idle_qubits, append_basis_change_circuit, join_transpiled_circuits
+from utils.circs import simplify_logical_circuits, count_non_idle_qubits, append_basis_change_circuit, join_transpiled_circuits, numpy_array_of_circuits
+from utils.odr import compute_depolarizing_probability, renormalize_observable, compute_depolarizing_probability_std
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
-from utils.odr import compute_depolarizing_probability, renormalize_observable
 from qiskit_ibm_runtime.exceptions import RuntimeJobFailureError
 from qiskit_ibm_runtime import RuntimeDecoder, RuntimeEncoder
 from qiskit.quantum_info import Pauli, PauliList
 from utils.hexec import execute_sampler_batch
+from qiskit_ibm_runtime import Batch
 from qiskit import QuantumCircuit
 from collections import Counter
 from pymatching import Matching
@@ -644,41 +645,89 @@ def initialize_postselection(nqubits, postselects_generating_func, observable_ge
             non_diagonal_observables.append(observable)
     return postselection_ops, diagonal_observables, non_diagonal_observables, basis
 
+def generate_multilayout_circuits_to_run(transpiled_circuits, odr_circuits, nrepetitions):
+    transpiled_circuits = np.array(transpiled_circuits)
+    odr_circuits = np.array(odr_circuits)
+
+    if len(transpiled_circuits.shape) < 2:
+        transpiled_circuits = transpiled_circuits[None]
+        if odr_circuits is not None:
+            odr_circuits = np.array(odr_circuits)[None]
+
+    circuits_to_run = []
+    for ilayout in range(transpiled_circuits.shape[0]):
+        this_layout_circuits = np.concatenate((odr_circuits[ilayout], np.tile(transpiled_circuits[ilayout], nrepetitions)))
+        circuits_to_run.append(this_layout_circuits)
+    return np.array(circuits_to_run)
+
 def execute_postselected_sampler_batch(backend, sampler_opt_dict, transpiled_circuits, postselects_generating_func, observable_generating_funcs, odr_circuits=None, extra_options=None, job_db=None, max_shots=75000):
     # TODO: This only works for our particular case
-    nqubits = np.max([count_non_idle_qubits(circ) for circ in transpiled_circuits])
+    transpiled_circuits = numpy_array_of_circuits(transpiled_circuits)
+    if odr_circuits is not None: odr_circuits = numpy_array_of_circuits(odr_circuits)
+    if len(transpiled_circuits.shape) > 1:
+        nqubits = 0
+        for circ_arr in transpiled_circuits:
+            for circ in circ_arr:
+                if (this_nqb := count_non_idle_qubits(circ)) > nqubits:
+                    nqubits = this_nqb
+    else:
+        nqubits = np.max([count_non_idle_qubits(circ) for circ in transpiled_circuits])
+    
     postselection_ops, diagonal_observables, non_diagonal_observables, basis = initialize_postselection(nqubits, postselects_generating_func, observable_generating_funcs)
     if basis != "Z":
-        basis_changed_circuits = [append_basis_change_circuit(circ, basis, backend) for circ in transpiled_circuits]
-    else:
-        basis_changed_circuits = transpiled_circuits
+        transpiled_circuits = np.array([append_basis_change_circuit(circ, basis, backend) for circ in transpiled_circuits])
     if odr_circuits is not None:
         try:
-            if len(odr_circuits) != len(transpiled_circuits):
+            if odr_circuits.shape != transpiled_circuits.shape:
                 raise ValueError("If provided, odr_circuits must be the same length as transpiled_circuits")
         except TypeError:
             raise ValueError("If provided, odr_circuits must be the same length as transpiled_circuits")
+
+    if len(transpiled_circuits.shape) > 1:
+        shots = sampler_opt_dict.get("default_shots", 1)
+        shots_per_layout = shots // transpiled_circuits.shape[0]
     else:
-        to_run_circuits = basis_changed_circuits
-    if (shots := sampler_opt_dict.get("default_shots", 0)) > max_shots:
-        nrepetitions = shots // max_shots + 1
+        shots_per_layout = sampler_opt_dict.get("default_shots", 1)
+    
+    if shots_per_layout > max_shots:
+        nrepetitions = shots_per_layout // max_shots
+        if nrepetitions == 0:
+            nrepetitions = 1
         last_rep_shots = shots % max_shots
-        sampler_options = []
+        sampler_options_per_layout = []
         for i in range(nrepetitions):
             this_options = sampler_opt_dict.copy()
             if i == nrepetitions-1:
                 this_options["default_shots"] = last_rep_shots
             else:
                 this_options["default_shots"] = max_shots
-            sampler_options.append(this_options)
+            sampler_options_per_layout.append(this_options)
         if last_rep_shots == 0:
-            sampler_options.pop()
-        to_run_circuits = odr_circuits + transpiled_circuits*nrepetitions
+            sampler_options_per_layout.pop()
     else:
-        sampler_options = [sampler_opt_dict]
-        to_run_circuits = odr_circuits + transpiled_circuits
+        nrepetitions = 1
+        edited_sampler_options = sampler_opt_dict.copy()
+        edited_sampler_options["default_shots"] = shots_per_layout
+        sampler_options_per_layout = [edited_sampler_options]
+    
+    if len(transpiled_circuits.shape) < 2:
+        transpiled_circuits = transpiled_circuits[None]
+        if odr_circuits is not None:
+            odr_circuits = np.array(odr_circuits)[None]
+
+    circuits_to_run = generate_multilayout_circuits_to_run(transpiled_circuits, odr_circuits, nrepetitions)
+
+    batch = Batch(backend=backend)
+
     # First send diagonal jobs
-    jobs = execute_sampler_batch(backend, sampler_options, transpiled_circuits, odr_circuits, job_db=job_db)
+    job_objs = []
+    for i, this_layout_circs in enumerate(circuits_to_run):
+        this_jobs = execute_sampler_batch(backend, sampler_options_per_layout, this_layout_circs[odr_circuits.shape[-1]:], this_layout_circs[:odr_circuits.shape[-1]] if odr_circuits is not None else None, batch=batch)
+        job_objs.append(this_jobs)
+    job_objs = np.array(job_objs)
+
+    batch.close()
+
     # Diagonalize each non-diagonal observable and send a batch of jobs to avoid long circuits
     for observable in non_diagonal_observables:
         raise NotImplementedError("Only supports diagonal observables")
@@ -687,18 +736,18 @@ def execute_postselected_sampler_batch(backend, sampler_opt_dict, transpiled_cir
         this_diag_circ, this_R_inv, this_phases = paulis_diagonalization_circuit(reduced_ops_to_diag)
 
     if job_db is not None:
-        job_ids = [job.job_id() for job in jobs]
+        job_ids = np.array([[job.job_id() for job in this_layout_jobs] for this_layout_jobs in job_objs])
         postselection_strings = sorted([pauli_to_str(op) for op in postselection_ops])
         observables_string = sorted([pauli_to_str(op) for op in set(diagonal_observables + non_diagonal_observables)])
         post_obs_info_dict = {"postselection_ops": postselection_strings, "observables": observables_string}
         extra_options = {} if extra_options is None else extra_options
-        options = extra_options | post_obs_info_dict | sampler_opt_dict | ({"odr": True} if odr_circuits is not None else {"odr": False})
-        job_db.add(options, to_run_circuits, "Sampler", job_ids)
+        options = extra_options | sampler_opt_dict | ({"odr": True} if odr_circuits is not None else {"odr": False}) | post_obs_info_dict
+        job_db.add(options, circuits_to_run.flatten().tolist(), "Sampler", job_ids.flatten().tolist())
     else:
         print("WARNING: Submitting jobs without job_db")
     
-    return jobs
-
+    return job_objs.flatten().tolist()
+    
 def db_add_postselected_sampler_ran_batch(job_db, service, session_id, backend, sampler_opt_dict, transpiled_circuits, postselects_generating_func, observable_generating_funcs, extra_options=None):
     nqubits = np.max([count_non_idle_qubits(circ) for circ in transpiled_circuits])
     postselection_ops, diagonal_observables, non_diagonal_observables, basis = initialize_postselection(nqubits, postselects_generating_func, observable_generating_funcs)
@@ -734,7 +783,7 @@ def is_valid_state_string(string, postselection_ops):
     each_postselection_valid = ~(np.sum(string_rep_arr*postselection_mask, axis=1) % 2).astype(bool)
     return np.all(each_postselection_valid)
 
-def get_postselected_samples_dict(samples_dict, postselection_ops, circ_layout=None):
+def get_postselected_samples_dict(samples_dict, postselection_ops, circ_layout=None, return_logical=False):
     if len(samples_dict) == 0:
         return samples_dict
     all_diagonal, basis = diagonal_operators_check(postselection_ops)
@@ -747,13 +796,13 @@ def get_postselected_samples_dict(samples_dict, postselection_ops, circ_layout=N
         raise ValueError("All postselection operators and samples must have the same number of qubits")
     rep_strings_arr = np.repeat(strings_arr, len(postselection_ops), axis=0)
     rep_postselection_mask = np.tile(postselection_mask.T, len(samples_dict)).T
-    if circ_layout is not None:
+    if circ_layout is not None and not return_logical:
         rep_strings_arr = get_layout_state(rep_strings_arr, circ_layout)
     each_string_postselections = ~(np.sum(rep_strings_arr*rep_postselection_mask, axis=1) % 2).reshape(len(samples_dict), len(postselection_ops)).astype(bool)
     is_valid_string = np.all(each_string_postselections, axis=1)
     return {state_string:counts for i, (state_string, counts) in enumerate(samples_dict.items()) if is_valid_string[i]}
 
-def get_recovered_postselected_samples_dict(samples_dict, postselection_ops, circ_layout=None, flip_threshold=None):
+def get_recovered_postselected_samples_dict(samples_dict, postselection_ops, circ_layout=None, flip_threshold=None, return_logical=False):
     if len(samples_dict) == 0:
         return samples_dict
     all_diagonal, basis = diagonal_operators_check(postselection_ops)
@@ -771,7 +820,7 @@ def get_recovered_postselected_samples_dict(samples_dict, postselection_ops, cir
     predicted_flips = decoder.decode_batch(string_syndromes)
     npredicted_flips = predicted_flips.sum(axis=1)
     recovered_strings = (strings_arr + predicted_flips) % 2
-    if circ_layout is not None:
+    if circ_layout is not None and not return_logical:
         recovered_strings = undo_layout_state(recovered_strings, circ_layout)
     recovered_samples_dict = {}
     fmt_str = "%i"*recovered_strings.shape[1]
@@ -786,9 +835,12 @@ def get_recovered_postselected_samples_dict(samples_dict, postselection_ops, cir
             recovered_samples_dict[recovered_string] = samples_dict[string]
     return recovered_samples_dict
 
-def measure_diagonal_observables(samples_dict, diagonal_observables, circ_layout=None):
+def measure_diagonal_observables(samples_dict, diagonal_observables, circ_layout=None, return_std=False):
     if len(samples_dict) == 0:
-        return np.full(len(diagonal_observables), np.nan)
+        if return_std:
+            return np.full(len(diagonal_observables), np.nan), np.full(len(diagonal_observables), np.nan)
+        else: 
+            return np.full(len(diagonal_observables), np.nan)
     nqubits = len(diagonal_observables[0])
     for observable in diagonal_observables:
         if len(observable) != nqubits:
@@ -810,7 +862,13 @@ def measure_diagonal_observables(samples_dict, diagonal_observables, circ_layout
     weights = np.array(list(samples_dict.values()))/np.sum(list(samples_dict.values()))
     strings_expectation_times_weights = strings_expectation_values * weights.reshape((len(samples_dict), 1))
     expectation_values = np.sum(strings_expectation_times_weights, axis=0)
-    return expectation_values
+    if return_std:
+        std_weights = np.array(list(samples_dict.values()))/np.sum(list(samples_dict.values()))
+        to_sum = std_weights.reshape((len(samples_dict), 1))*(strings_expectation_values - expectation_values)**2
+        std = np.sqrt(np.sum(to_sum, axis=0))
+        return expectation_values, std
+    else:
+        return expectation_values
 
 def simulate_postselected_operators(fake_backend, sampler_opt_dict, transpiled_circuits, postselect_generating_func, observable_generating_funcs, return_samples_dicts=False, return_postselected_samples_dicts=False, odr_transpiled_circuits=None):
     nqubits = np.max([count_non_idle_qubits(circ) for circ in transpiled_circuits])
@@ -878,27 +936,50 @@ def simulate_postselected_operators(fake_backend, sampler_opt_dict, transpiled_c
         to_return.append(postselected_samples_dicts)
     return to_return if len(to_return) > 1 else to_return[0]
 
-def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_circuits, postselect_generating_func, observable_generating_funcs, extra_options=None, job_index=0, recovery=True, flip_threshold=None, jobs_result_folder="", return_samples_dicts=False, return_postselected_samples_dicts=False, odr_circuits=None, max_shots=100000):
-    nqubits = np.max([count_non_idle_qubits(circ) for circ in transpiled_circuits])
+def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_circuits, postselect_generating_func, observable_generating_funcs, extra_options=None, job_index=0, recovery=True, flip_threshold=None, jobs_result_folder="", return_std=False, return_samples_dicts=False, return_postselected_samples_dicts=False, odr_circuits=None, max_shots=75000):
+    transpiled_circuits = numpy_array_of_circuits(transpiled_circuits)
+    if odr_circuits is not None: odr_circuits = numpy_array_of_circuits(odr_circuits)
+    if len(transpiled_circuits.shape) > 1:
+        nqubits = 0
+        for circ_arr in transpiled_circuits:
+            for circ in circ_arr:
+                if (this_nqb := count_non_idle_qubits(circ)) > nqubits:
+                    nqubits = this_nqb
+    else:
+        nqubits = np.max([count_non_idle_qubits(circ) for circ in transpiled_circuits])
     postselection_ops, diagonal_observables, non_diagonal_observables, basis = initialize_postselection(nqubits, postselect_generating_func, observable_generating_funcs)
     postselection_strings = sorted([pauli_to_str(op) for op in postselection_ops])
     observables_string = sorted([pauli_to_str(op) for op in PauliList(set(diagonal_observables + non_diagonal_observables))])
     post_obs_info_dict = {"postselection_ops": postselection_strings, "observables": observables_string}
     extra_options = {} if extra_options is None else extra_options
-    options = extra_options | post_obs_info_dict | sampler_opt_dict | ({"odr": True} if odr_circuits is not None else {})
+    options = extra_options | sampler_opt_dict | ({"odr": True} if odr_circuits is not None else {}) | post_obs_info_dict
     if odr_circuits is not None:
-        if len(transpiled_circuits) != len(odr_circuits):
+        if transpiled_circuits.shape != odr_circuits.shape:
             raise ValueError("One ODR circuit must be provided for each transpiled_circuit")
-        ran_circuits = [odr_circuits[i//2] if i % 2 == 0 else transpiled_circuits[i//2] for i in range(2*len(transpiled_circuits))]
+    
+    if len(transpiled_circuits.shape) > 1:
+        shots = sampler_opt_dict.get("default_shots", 1)
+        shots_per_layout = shots // transpiled_circuits.shape[0]
+        if shots_per_layout == 0:
+            shots_per_layout = 1
     else:
-        ran_circuits = transpiled_circuits
+        shots_per_layout = sampler_opt_dict.get("default_shots", 1)
+
+    if shots_per_layout > max_shots:
+        nrepetitions = shots_per_layout // max_shots
+        if nrepetitions == 0:
+            nrepetitions = 1
+    else:
+        nrepetitions = 1
+
+    ran_circuits = generate_multilayout_circuits_to_run(transpiled_circuits, odr_circuits, nrepetitions)
     
     jobs_layout = []
+    jobs_db_json = job_db.search_by_params(options, ran_circuits.flatten().tolist(), "Sampler", strict_depth=False, limit=job_index+1)
+    if not jobs_db_json:
+        raise ValueError("No jobs found with the provided settings")
     if os.path.isdir(jobs_result_folder):
-        jobs_db_json = job_db.search_by_params(options, ran_circuits, "Sampler", strict_depth=False, limit=job_index+1)
         jobs = []
-        if not jobs_db_json:
-            raise ValueError("No jobs found with the provided settings")
         for job_json in jobs_db_json["jobs"]:
             this_job_id = job_json["job_id"]
             if os.path.isfile(this_job_filepath := os.path.join(jobs_result_folder, f"{this_job_id}.json")):
@@ -913,114 +994,188 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
                 jobs.append(this_result)
             jobs_layout.append(job_json["layout"])
     else:
-        jobs_db_json = job_db.search_by_params(options, transpiled_circuits, "Sampler", strict_depth=False, limit=job_index+1)
         jobs = []
         jobs_layout = []
         for job_json in jobs_db_json["jobs"]:
             jobs.append(ibmq_service.job(job_id=job_json["job_id"]))
             jobs_layout.append(job_json["layout"])
-    
-    shots = sampler_opt_dict.get("default_shots", 0)
-    nrepetitions = shots // max_shots + (shots % max_shots != 0)
 
     if odr_circuits is not None:
-        odr_jobs = jobs[0:len(odr_circuits)]
-        real_jobs = jobs[len(odr_circuits)::]
+        newdims = (transpiled_circuits.shape[0], odr_circuits.shape[1] + nrepetitions*transpiled_circuits.shape[1])
+    else:
+        newdims = (transpiled_circuits.shape[0], nrepetitions*transpiled_circuits.shape[1])
+    jobs = np.array(jobs, dtype=object).reshape(newdims)
+    jobs_layout = np.array(jobs_layout).reshape((*newdims, nqubits))
+
+    if odr_circuits is not None:
+        odr_jobs = jobs[:, :odr_circuits.shape[-1]]
+        real_jobs = jobs[:, odr_circuits.shape[-1]:]
     else:
         real_jobs = jobs
-    observable_matrix = np.zeros((len(transpiled_circuits), len(diagonal_observables + non_diagonal_observables)))
-    raw_observable_matrix = np.zeros((len(transpiled_circuits), len(diagonal_observables + non_diagonal_observables)))
+
+    observable_matrix = np.zeros((transpiled_circuits.shape[-1], len(diagonal_observables + non_diagonal_observables)))
+    raw_observable_matrix = np.zeros_like(observable_matrix)
     if odr_circuits is not None:
-        real_observable_matrix = np.zeros((len(transpiled_circuits), len(diagonal_observables + non_diagonal_observables)))
-        odr_observable_matrix = np.zeros((len(transpiled_circuits), len(diagonal_observables + non_diagonal_observables)))
-    real_samples_dicts = []
-    if odr_circuits is not None:
-        odr_samples_dicts = []
-    real_postselected_samples_dicts = []
-    if odr_circuits is not None:
-        odr_postselected_samples_dicts = []
+        real_observable_matrix = np.zeros_like(observable_matrix)
+        odr_observable_matrix = np.zeros_like(observable_matrix)
+    if return_std:
+        observable_std_matrix = np.zeros_like(observable_matrix)
+        raw_observable_std_matrix = np.zeros_like(observable_matrix)
+        if odr_circuits is not None:
+            real_observable_std_matrix = np.zeros_like(observable_matrix)
+            odr_observable_std_matrix = np.zeros_like(observable_matrix)
+
     # Measure diagonal postselected operators
     if odr_circuits is not None:
-        diagonal_odr_jobs = odr_jobs[:len(odr_circuits)]
-        for i, dodrjob in enumerate(diagonal_odr_jobs):
-            if os.path.isdir(jobs_result_folder):
-                if dodrjob is not None:
-                    odr_samples_dict = list(dodrjob[0].data.values())[0].get_counts()
+        odr_samples_dicts = []
+        diagonal_odr_jobs = odr_jobs[:, :odr_circuits.shape[-1]]
+        for this_layout_odr_jobs in diagonal_odr_jobs:
+            this_layout_samples_dicts = []
+            for dodrjob in this_layout_odr_jobs:
+                if os.path.isdir(jobs_result_folder):
+                    if dodrjob is not None:
+                        try:
+                            dodrjob = dodrjob[0]
+                        except TypeError:
+                            pass
+                        try:
+                            odr_samples_dict = dodrjob.data.c.get_counts()
+                        except AttributeError:
+                            odr_samples_dict = dodrjob.data.measure.get_counts()
+                    else:
+                        odr_samples_dict = {}
                 else:
-                    odr_samples_dict = {}
+                    try:
+                        try:
+                            odr_samples_dict = dodrjob.result()[0].data.c.get_counts()
+                        except AttributeError:
+                            odr_samples_dict = dodrjob.result()[0].data.measure.get_counts()
+                    except RuntimeJobFailureError:
+                        odr_samples_dict = {}
+                this_layout_samples_dicts.append(odr_samples_dict)
+            odr_samples_dicts.append(this_layout_samples_dicts)
+        odr_samples_dicts = np.array(odr_samples_dicts)
+
+    real_samples_dicts = []
+    diagonal_real_jobs = real_jobs[:, :nrepetitions*transpiled_circuits.shape[1]]
+    for this_layout_real_jobs in diagonal_real_jobs:
+        this_layout_samples_dicts = []
+        for i, drealjob in enumerate(this_layout_real_jobs):
+            if os.path.isdir(jobs_result_folder):
+                if drealjob is not None:
+                    try:
+                        drealjob = drealjob[0]
+                    except TypeError:
+                        pass
+                    try:
+                        try:
+                            real_samples_dict = drealjob.data.c.get_counts()
+                        except AttributeError:
+                            real_samples_dict = drealjob.data.measure.get_counts()
+                    except AttributeError:
+                        real_samples_dict = {}
+                else:
+                    real_samples_dict = {}
             else:
                 try:
-                    odr_samples_dict = list(dodrjob.result()[0].data.values())[0].get_counts()
+                    try:
+                        real_samples_dict = drealjob.result()[0].data.c.get_counts()
+                    except AttributeError:
+                        real_samples_dict = drealjob.result()[0].data.measure.get_counts()
                 except RuntimeJobFailureError:
-                    odr_samples_dict = {}
-            odr_samples_dicts.append(odr_samples_dict)
-
-    diagonal_real_jobs = real_jobs[:nrepetitions*len(transpiled_circuits)]
-    for i, drealjob in enumerate(diagonal_real_jobs):
-        if os.path.isdir(jobs_result_folder):
-            if drealjob is not None:
-                real_samples_dict = list(drealjob[0].data.values())[0].get_counts()
-            else:
-                real_samples_dict = {}
-        else:
-            try:
-                real_samples_dict = list(drealjob.result()[0].data.values())[0].get_counts()
-            except RuntimeJobFailureError:
-                real_samples_dict = {}
-        real_samples_dicts.append(real_samples_dict)
+                    real_samples_dict = {}
+            this_layout_samples_dicts.append(real_samples_dict)
+        real_samples_dicts.append(this_layout_samples_dicts)
+    real_samples_dicts = np.array(real_samples_dicts)
 
     if nrepetitions > 1:
-        for i in range(len(transpiled_circuits)):
-            this_circ_real_samples_dict = [real_samples_dicts[i + j*len(transpiled_circuits)] for j in range(nrepetitions)]
-            combined_real_samples_dict = combine_samples_dicts(*this_circ_real_samples_dict)
-            real_samples_dicts[i] = combined_real_samples_dict
-        real_samples_dicts = real_samples_dicts[:len(transpiled_circuits)]
+        for ilayout in range(transpiled_circuits.shape[0]):
+            for icirc in range(transpiled_circuits.shape[1]):
+                this_circ_real_samples_dict = [real_samples_dicts[ilayout, icirc + j*transpiled_circuits.shape[1]] for j in range(nrepetitions)]
+                combined_real_samples_dict = combine_samples_dicts(*this_circ_real_samples_dict)
+                real_samples_dicts[ilayout, icirc] = combined_real_samples_dict
+        real_samples_dicts = real_samples_dicts[:, :transpiled_circuits.shape[1]]
 
-    for i, real_samples_dict in enumerate(real_samples_dicts):
-        if odr_circuits is not None:
+    postselected_real_samples_dicts = []
+    if odr_circuits is not None: postselected_odr_samples_dicts = []
+    for ilayout in range(real_samples_dicts.shape[0]):
+        this_layout_real_postselected_samples_dicts = []
+        if odr_circuits is not None: this_layout_odr_samples_dicts = []
+        for icirc in range(real_samples_dicts.shape[1]):
             if recovery:
-                postselected_real_samples_dict = get_recovered_postselected_samples_dict(real_samples_dict, postselection_ops, jobs_layout[len(odr_circuits)+i][::-1], flip_threshold)
-                postselected_odr_samples_dict = get_recovered_postselected_samples_dict(odr_samples_dicts[i], postselection_ops, jobs_layout[i][::-1], flip_threshold)
+                this_layout_real_postselected_samples_dicts.append(get_recovered_postselected_samples_dict(real_samples_dicts[ilayout, icirc], postselection_ops, jobs_layout[ilayout, icirc][::-1], flip_threshold, return_logical=True))
+                if odr_circuits is not None:
+                    this_layout_odr_samples_dicts.append(get_recovered_postselected_samples_dict(odr_samples_dicts[ilayout, icirc], postselection_ops, jobs_layout[ilayout, icirc][::-1], flip_threshold, return_logical=True))
             else:
-                postselected_real_samples_dict = get_postselected_samples_dict(real_samples_dict, postselection_ops, jobs_layout[len(odr_circuits)+i][::-1])
-                postselected_odr_samples_dict = get_postselected_samples_dict(odr_samples_dicts[i], postselection_ops, jobs_layout[i][::-1])
-            real_postselected_samples_dicts.append(postselected_real_samples_dict)
-            odr_postselected_samples_dicts.append(postselected_odr_samples_dict)
-        else:
-            if recovery:
-                postselected_real_samples_dict = get_recovered_postselected_samples_dict(real_samples_dict, postselection_ops, jobs_layout[i], flip_threshold)
-            else:
-                postselected_real_samples_dict = get_postselected_samples_dict(real_samples_dict, postselection_ops, jobs_layout[i])
-            real_postselected_samples_dicts.append(postselected_real_samples_dict)
+                this_layout_real_postselected_samples_dicts.append(get_postselected_samples_dict(real_samples_dicts[ilayout, icirc], postselection_ops, jobs_layout[ilayout, icirc][::-1], return_logical=True))
+                if odr_circuits is not None:
+                    this_layout_odr_samples_dicts.append(get_postselected_samples_dict(odr_samples_dicts[ilayout, icirc], postselection_ops, jobs_layout[ilayout, icirc][::-1], return_logical=True))
+        postselected_real_samples_dicts.append(this_layout_real_postselected_samples_dicts)
+        if odr_circuits is not None: postselected_odr_samples_dicts.append(this_layout_odr_samples_dicts)
+    postselected_real_samples_dicts = np.array(postselected_real_samples_dicts)
+    if odr_circuits is not None: postselected_odr_samples_dicts = np.array(postselected_odr_samples_dicts)
+
+    combined_real_postselected_samples_dicts = []
+    combined_real_samples_dicts = []
+    if odr_circuits is not None: combined_odr_postselected_samples_dicts = []
+    for icirc in range(postselected_real_samples_dicts.shape[1]):
+        this_circ_postselected_real_samples_dicts = postselected_real_samples_dicts[:, icirc]
+        combined_postselected_real_samples_dict = combine_samples_dicts(*this_circ_postselected_real_samples_dicts)
+        combined_real_postselected_samples_dicts.append(combined_postselected_real_samples_dict)
+        this_circ_real_samples_dicts = real_samples_dicts[:, icirc]
+        combined_real_samples_dict = combine_samples_dicts(*this_circ_real_samples_dicts)
+        combined_real_samples_dicts.append(combined_real_samples_dict)
         if odr_circuits is not None:
-            real_expectation_values = measure_diagonal_observables(postselected_real_samples_dict, diagonal_observables, jobs_layout[len(odr_circuits)+i][::-1])
-            odr_expectation_values = measure_diagonal_observables(postselected_odr_samples_dict, diagonal_observables, jobs_layout[i][::-1])
-            raw_expectation_values = measure_diagonal_observables(real_samples_dict, diagonal_observables, jobs_layout[len(odr_circuits)+i][::-1])
-            p_arr = compute_depolarizing_probability(odr_expectation_values, 1, 0, odr_circuits[i].num_qubits)
-            clean_expectation_values = renormalize_observable(real_expectation_values, p_arr, 0, transpiled_circuits[i].num_qubits, observable_range=(-1, 1))
-            expectation_values = clean_expectation_values
-            real_observable_matrix[i, :] = real_expectation_values
-            odr_observable_matrix[i, :] = odr_expectation_values
+            this_circ_odr_samples_dicts = postselected_odr_samples_dicts[:, icirc]
+            combined_odr_postselected_samples_dict = combine_samples_dicts(*this_circ_odr_samples_dicts)
+            combined_odr_postselected_samples_dicts.append(combined_odr_postselected_samples_dict)
+    
+    for icirc in range(len(combined_real_postselected_samples_dicts)):
+        if odr_circuits is not None:
+            real_expectation_values, real_expectation_values_std = measure_diagonal_observables(combined_real_postselected_samples_dicts[icirc], diagonal_observables, circ_layout=np.arange(nqubits)[::-1], return_std=True)
+            odr_expectation_values, odr_expectation_values_std = measure_diagonal_observables(combined_odr_postselected_samples_dicts[icirc], diagonal_observables, circ_layout=np.arange(nqubits)[::-1], return_std=True)
+            raw_expectation_values, raw_expectation_values_std = measure_diagonal_observables(combined_real_samples_dicts[icirc], diagonal_observables, circ_layout=np.arange(nqubits)[::-1], return_std=True)
+            p_arr = compute_depolarizing_probability(odr_expectation_values, 1, 0, odr_circuits[0, icirc].num_qubits)
+            p_std = compute_depolarizing_probability_std(odr_expectation_values_std, 1, 0, odr_circuits[0, icirc].num_qubits)
+            clean_expectation_values, clean_expectation_values_std = renormalize_observable(real_expectation_values, p_arr, 0, transpiled_circuits[0, icirc].num_qubits, observable_range=(-1, 1), p_std=p_std)
+            observable_matrix[icirc, :] = clean_expectation_values
+            real_observable_matrix[icirc, :] = real_expectation_values
+            odr_observable_matrix[icirc, :] = odr_expectation_values
+            raw_observable_matrix[icirc, :] = raw_expectation_values
+            if return_std:
+                observable_std_matrix[icirc, :] = clean_expectation_values_std
+                real_observable_std_matrix[icirc, :] = real_expectation_values_std
+                odr_observable_std_matrix[icirc, :] = odr_expectation_values_std
+                raw_observable_std_matrix[icirc, :] = raw_expectation_values_std
         else:
-            real_expectation_values = measure_diagonal_observables(postselected_real_samples_dict, diagonal_observables, jobs_layout[i][::-1])
-            raw_expectation_values = measure_diagonal_observables(real_samples_dict, diagonal_observables, jobs_layout[i][::-1])
-            expectation_values = real_expectation_values
-        raw_observable_matrix[i, :] = raw_expectation_values
-        observable_matrix[i, :len(diagonal_observables)] = expectation_values
+            real_expectation_values, real_expectation_values_std = measure_diagonal_observables(combined_real_postselected_samples_dicts[icirc], diagonal_observables, circ_layout=np.arange(nqubits)[::-1], return_std=True)
+            raw_expectation_values, raw_expectation_values_std = measure_diagonal_observables(combined_real_samples_dict[icirc], diagonal_observables, circ_layout=np.arange(nqubits)[::-1], return_std=True)
+            observable_matrix[icirc, :] = real_expectation_values
+            raw_observable_matrix[icirc, :] = raw_expectation_values
+            if return_std:
+                observable_std_matrix[icirc, :] = real_expectation_values_std
+                raw_observable_std_matrix[icirc, :] = raw_expectation_values_std
+
     # Measure non-diagonal observables
     for observable in non_diagonal_observables:
         raise NotImplementedError("Non-diagonal observables not yet supported")
+
+    # Return
     if odr_circuits is None:
         to_return = [[observable_matrix, raw_observable_matrix]]
+        if return_std:
+            to_return.append([observable_std_matrix, raw_observable_std_matrix])
         if return_samples_dicts:
             to_return.append([real_samples_dicts])
         if return_postselected_samples_dicts:
-            to_return.append([real_postselected_samples_dicts])
+            to_return.append([postselected_real_samples_dicts])
         return to_return if len(to_return) > 1 else to_return[0]
     else:
         to_return = [[observable_matrix, real_observable_matrix, odr_observable_matrix, raw_observable_matrix]]
+        if return_std:
+            to_return.append([observable_std_matrix, real_observable_std_matrix, odr_observable_std_matrix, raw_observable_std_matrix])
         if return_samples_dicts:
             to_return.append([real_samples_dicts, odr_samples_dicts])
         if return_postselected_samples_dicts:
-            to_return.append([real_postselected_samples_dicts, odr_postselected_samples_dicts])
+            to_return.append([postselected_real_samples_dicts, postselected_odr_samples_dicts])
         return to_return if len(to_return) > 1 else to_return[0]
