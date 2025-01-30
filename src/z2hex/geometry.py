@@ -558,6 +558,106 @@ class HeavyHexLattice:
                         complete_string_coords.append(node)
         return np.array(complete_string_coords)             
 
+    def get_external_matter_qubit_inds(self, string: list, external_layers: int=None):
+        """
+        get_external_matter_qubit_inds
+
+        This function gets the matter sites labels in the positive x_2 direction
+        from the site where the string starts. It takes a number of sites
+        equal to the allowed lattice or by fixing a number of wanted external layers.
+        
+        string: list - list of qubit labels where the string is placed
+        external_layers: int - number of maximum matter sites labels to consider. By defaul None,
+                gets all the qubits allowed by the lattice
+        
+        """
+        external_matter_qubit_coord_candidates = []
+        axisdir = (0,1)
+        candidate_in_lattice = True
+        string_qubit_coords = np.array(self.coords)[string]
+
+        while candidate_in_lattice:
+            candidate = string_qubit_coords[0] + np.array(axisdir)
+            if tuple(candidate.tolist()) in self.coords:
+                external_matter_qubit_coord_candidates.append(candidate)
+                axisdir = (axisdir[0],axisdir[1]+1)
+                if len(external_matter_qubit_coord_candidates) == external_layers:
+                    break
+            else:
+                print("reached the edges of the self")
+                candidate_in_lattice = False
+
+        external_matter_qubit_inds = self.coords_to_logical_qb(external_matter_qubit_coord_candidates)
+        return external_matter_qubit_inds
+
+    def get_transversal_gauge_qubit_inds(self, string: list, angle: int=-1):
+        """
+        get_transversal_gauge_qubit_inds
+
+        This function gets the transversal gauge qubits with respect to the center of the string
+        with a certain angle.
+
+        string: list - list of qubit labels where the string is placed
+        angle: int - angle in the transversal direction. By defaul -1 gets the string perpendicular to string
+
+        """
+        start_coords = (self.coords[string[0]][0], self.coords[string[0]][1] + 2.5)
+        angle = -1
+        transversal_gauge_qubit_inds = self.line_of_qubits(self.coords_to_logical_qb(start_coords), angle)
+        return transversal_gauge_qubit_inds
+
+    def get_longitudinal_gauge_qubit_inds(self, string: list):
+        """
+        get_longitudinal_gauge_qubit_inds
+
+        This function gets the longitudinal gauge qubits on the string.
+
+        string: list - list of qubit labels where the string is placed
+        
+        """
+        string_qubit_coords = np.array(self.coords)[string]
+        complete_string_qubit_coords = array_of_coords_to_tuple(self.complete_string_with_matter(string_qubit_coords))
+        longitudinal_gauge_qubit_coords = [coords for coords in complete_string_qubit_coords if is_edge_coords(coords)]
+        longitudinal_gauge_qubit_inds = self.coords_to_logical_qb(longitudinal_gauge_qubit_coords)
+
+        return longitudinal_gauge_qubit_inds
+
+    def get_longitudinal_matter_qubit_inds(self, string: list):
+        """
+        get_longitudinal_matter_qubit_inds
+
+        This function gets the longitudinal matter qubits on the string.
+
+        string: list - list of qubit labels where the string is placed
+        
+        """
+        string_qubit_coords = np.array(self.coords)[string]
+        complete_string_qubit_coords = array_of_coords_to_tuple(self.complete_string_with_matter(string_qubit_coords))
+        longitudinal_matter_qubit_coords = [coords for coords in complete_string_qubit_coords if not is_edge_coords(coords)]
+        longitudinal_matter_qubit_inds = self.coords_to_logical_qb(longitudinal_matter_qubit_coords)
+
+        return longitudinal_matter_qubit_inds
+
+def get_correlator_qubit_inds(strings):
+    correlator_qubit_inds = []
+    for corr_type, string in enumerate(strings):
+        if corr_type == 0:
+            qubit_ind1 = string[0]
+            for i in range((len(string)-1)//2):
+                qubit_ind2 = string[i+1]
+                correlator_qubit_inds.append((qubit_ind1, qubit_ind2))
+        elif corr_type == 1:
+            qubit_ind1 = string[0]
+            for i in range(len(string)-1):
+                qubit_ind2 = string[i+1]
+                correlator_qubit_inds.append((qubit_ind1, qubit_ind2))
+        else:
+            qubit_ind1 = string[len(string)//2]
+            for i in range((len(string)-1)//2):
+                qubit_ind2 = string[len(string)//2+i+1]
+                correlator_qubit_inds.append((qubit_ind1, qubit_ind2))
+    return correlator_qubit_inds
+
 def is_edge_coords(coords):
     if type(coords) == tuple:
         return (coords[0] % 1 != 0) or (coords[1] % 1 != 0)

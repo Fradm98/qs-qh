@@ -22,6 +22,24 @@ def pauli_xs_mean(nqubits):
     logical_observable = SparsePauliOp(paulistrs, coeffs)
     return logical_observable
 
+def correlator_z(nqubits, qubit_inds):
+    qubit_ind1 = qubit_inds[0]
+    qubit_ind2 = qubit_inds[1]
+    if qubit_ind1 > nqubits:
+        raise ValueError("qubit_ind1 must be in the interval [0, nqubits)")
+    if qubit_ind2 > nqubits:
+        raise ValueError("qubit_ind2 must be in the interval [0, nqubits)")
+    return Pauli("I"*qubit_ind1 + "Z" + "I"*(qubit_ind2 - qubit_ind1 - 1) + "Z" + "I"*(nqubits - qubit_ind2 - 1))
+
+def correlator_x(nqubits, qubit_inds):
+    qubit_ind1 = qubit_inds[0]
+    qubit_ind2 = qubit_inds[1]
+    if qubit_ind1 > nqubits:
+        raise ValueError("qubit_ind1 must be in the interval [0, nqubits)")
+    if qubit_ind2 > nqubits:
+        raise ValueError("qubit_ind2 must be in the interval [0, nqubits)")
+    return Pauli("I"*qubit_ind1 + "X" + "I"*(qubit_ind2 - qubit_ind1 - 1) + "X" + "I"*(nqubits - qubit_ind2 - 1))
+
 def gauge_operator(chain_length, site_ind, x_basis=False):
     if not site_ind < chain_length:
         raise ValueError("Arguments must fulfill chain_length < site_ind")
