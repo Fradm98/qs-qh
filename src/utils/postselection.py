@@ -1,8 +1,9 @@
 from utils.circs import simplify_logical_circuits, count_non_idle_qubits, append_basis_change_circuit, join_transpiled_circuits, numpy_array_of_circuits
-from utils.odr import compute_depolarizing_probability, renormalize_observable, compute_depolarizing_probability_std
+from utils.odr import compute_depolarizing_probability, renormalize_observable
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit_ibm_runtime.exceptions import RuntimeJobFailureError
 from qiskit_ibm_runtime import RuntimeDecoder, RuntimeEncoder
+from utils.bootstrap import bootstrap_sample_dict_mean
 from qiskit.quantum_info import Pauli, PauliList
 from utils.hexec import execute_sampler_batch
 from qiskit_ibm_runtime import Batch
@@ -835,10 +836,23 @@ def get_recovered_postselected_samples_dict(samples_dict, postselection_ops, cir
             recovered_samples_dict[recovered_string] = samples_dict[string]
     return recovered_samples_dict
 
-def measure_diagonal_observables(samples_dict, diagonal_observables, circ_layout=None, return_std=False):
+def get_logical_samples_dict(samples_dict, circ_layout):
+    new_layout_dict = {}
+    strings_arr = np.array([[int(c) for c in state_string] for state_string in samples_dict.keys()])
+    if len(strings_arr) > 0:
+        logical_strings_arr = get_layout_state(strings_arr, circ_layout)
+        fmt_str = "%i"*logical_strings_arr.shape[1]
+        for i, state_string in enumerate(samples_dict.keys()):
+            recovered_string = fmt_str % tuple(logical_strings_arr[i])
+            new_layout_dict[recovered_string] = samples_dict[state_string]
+        return new_layout_dict
+    else:
+        return {}
+
+def measure_diagonal_observables(samples_dict, diagonal_observables, circ_layout=None, confidence=None):
     if len(samples_dict) == 0:
-        if return_std:
-            return np.full(len(diagonal_observables), np.nan), np.full(len(diagonal_observables), np.nan)
+        if confidence is not None:
+            return np.full(len(diagonal_observables), np.nan), np.full((len(diagonal_observables), 2), np.nan)
         else: 
             return np.full(len(diagonal_observables), np.nan)
     nqubits = len(diagonal_observables[0])
@@ -862,11 +876,9 @@ def measure_diagonal_observables(samples_dict, diagonal_observables, circ_layout
     weights = np.array(list(samples_dict.values()))/np.sum(list(samples_dict.values()))
     strings_expectation_times_weights = strings_expectation_values * weights.reshape((len(samples_dict), 1))
     expectation_values = np.sum(strings_expectation_times_weights, axis=0)
-    if return_std:
-        std_weights = np.array(list(samples_dict.values()))/np.sum(list(samples_dict.values()))
-        to_sum = std_weights.reshape((len(samples_dict), 1))*(strings_expectation_values - expectation_values)**2
-        std = np.sqrt(np.sum(to_sum, axis=0))
-        return expectation_values, std
+    if confidence is not None:
+        confidence_intervals = bootstrap_sample_dict_mean(samples_dict, strings_expectation_values, confidence)
+        return expectation_values, confidence_intervals
     else:
         return expectation_values
 
@@ -936,7 +948,8 @@ def simulate_postselected_operators(fake_backend, sampler_opt_dict, transpiled_c
         to_return.append(postselected_samples_dicts)
     return to_return if len(to_return) > 1 else to_return[0]
 
-def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_circuits, postselect_generating_func, observable_generating_funcs, extra_options=None, job_index=0, recovery=True, flip_threshold=None, jobs_result_folder="", return_std=False, return_samples_dicts=False, return_postselected_samples_dicts=False, odr_circuits=None, max_shots=75000):
+def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_circuits, postselect_generating_func, observable_generating_funcs, extra_options=None, job_index=0, recovery=True, flip_threshold=None, jobs_result_folder="", confidence=None, return_samples_dicts=False, return_postselected_samples_dicts=False, return_layouts=False, odr_circuits=None, max_shots=75000):
+    # Preparation    
     transpiled_circuits = numpy_array_of_circuits(transpiled_circuits)
     if odr_circuits is not None: odr_circuits = numpy_array_of_circuits(odr_circuits)
     if len(transpiled_circuits.shape) > 1:
@@ -974,6 +987,7 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
 
     ran_circuits = generate_multilayout_circuits_to_run(transpiled_circuits, odr_circuits, nrepetitions)
     
+    # Load jobs from local or IBMQ
     jobs_layout = []
     jobs_db_json = job_db.search_by_params(options, ran_circuits.flatten().tolist(), "Sampler", strict_depth=False, limit=job_index+1)
     if not jobs_db_json:
@@ -1018,14 +1032,14 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
     if odr_circuits is not None:
         real_observable_matrix = np.zeros_like(observable_matrix)
         odr_observable_matrix = np.zeros_like(observable_matrix)
-    if return_std:
-        observable_std_matrix = np.zeros_like(observable_matrix)
-        raw_observable_std_matrix = np.zeros_like(observable_matrix)
+    if confidence is not None:
+        observable_confidence_matrix = np.zeros((transpiled_circuits.shape[-1], len(diagonal_observables + non_diagonal_observables), 2))
+        raw_observable_confidence_matrix = np.zeros_like(observable_confidence_matrix)
         if odr_circuits is not None:
-            real_observable_std_matrix = np.zeros_like(observable_matrix)
-            odr_observable_std_matrix = np.zeros_like(observable_matrix)
+            real_observable_confidence_matrix = np.zeros_like(observable_confidence_matrix)
+            odr_observable_confidence_matrix = np.zeros_like(observable_confidence_matrix)
 
-    # Measure diagonal postselected operators
+    # Load samples dicts from jobs and organize them in memory
     if odr_circuits is not None:
         odr_samples_dicts = []
         diagonal_odr_jobs = odr_jobs[:, :odr_circuits.shape[-1]]
@@ -1088,6 +1102,7 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
         real_samples_dicts.append(this_layout_samples_dicts)
     real_samples_dicts = np.array(real_samples_dicts)
 
+    # Combine samples dicts from different repetitions
     if nrepetitions > 1:
         for ilayout in range(transpiled_circuits.shape[0]):
             for icirc in range(transpiled_circuits.shape[1]):
@@ -1096,6 +1111,7 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
                 real_samples_dicts[ilayout, icirc] = combined_real_samples_dict
         real_samples_dicts = real_samples_dicts[:, :transpiled_circuits.shape[1]]
 
+    # Generate postselected samples dicts
     postselected_real_samples_dicts = []
     if odr_circuits is not None: postselected_odr_samples_dicts = []
     for ilayout in range(real_samples_dicts.shape[0]):
@@ -1115,6 +1131,7 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
     postselected_real_samples_dicts = np.array(postselected_real_samples_dicts)
     if odr_circuits is not None: postselected_odr_samples_dicts = np.array(postselected_odr_samples_dicts)
 
+    # Combine sample dicts from different layouts
     combined_real_postselected_samples_dicts = []
     combined_real_samples_dicts = []
     if odr_circuits is not None: combined_odr_postselected_samples_dicts = []
@@ -1123,38 +1140,40 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
         combined_postselected_real_samples_dict = combine_samples_dicts(*this_circ_postselected_real_samples_dicts)
         combined_real_postselected_samples_dicts.append(combined_postselected_real_samples_dict)
         this_circ_real_samples_dicts = real_samples_dicts[:, icirc]
-        combined_real_samples_dict = combine_samples_dicts(*this_circ_real_samples_dicts)
+        this_circ_logical_real_samples_dicts = [get_logical_samples_dict(real_samples_dict, jobs_layout[ilayout, icirc][::-1]) for ilayout, real_samples_dict in enumerate(this_circ_real_samples_dicts)]
+        combined_real_samples_dict = combine_samples_dicts(*this_circ_logical_real_samples_dicts)
         combined_real_samples_dicts.append(combined_real_samples_dict)
         if odr_circuits is not None:
             this_circ_odr_samples_dicts = postselected_odr_samples_dicts[:, icirc]
             combined_odr_postselected_samples_dict = combine_samples_dicts(*this_circ_odr_samples_dicts)
             combined_odr_postselected_samples_dicts.append(combined_odr_postselected_samples_dict)
     
+    # Measure diagonal observables and errors from samples
     for icirc in range(len(combined_real_postselected_samples_dicts)):
         if odr_circuits is not None:
-            real_expectation_values, real_expectation_values_std = measure_diagonal_observables(combined_real_postselected_samples_dicts[icirc], diagonal_observables, circ_layout=np.arange(nqubits)[::-1], return_std=True)
-            odr_expectation_values, odr_expectation_values_std = measure_diagonal_observables(combined_odr_postselected_samples_dicts[icirc], diagonal_observables, circ_layout=np.arange(nqubits)[::-1], return_std=True)
-            raw_expectation_values, raw_expectation_values_std = measure_diagonal_observables(combined_real_samples_dicts[icirc], diagonal_observables, circ_layout=np.arange(nqubits)[::-1], return_std=True)
+            real_expectation_values, real_expectation_values_confidence = measure_diagonal_observables(combined_real_postselected_samples_dicts[icirc], diagonal_observables, circ_layout=np.arange(nqubits)[::-1], confidence=confidence)
+            odr_expectation_values, odr_expectation_values_confidence = measure_diagonal_observables(combined_odr_postselected_samples_dicts[icirc], diagonal_observables, circ_layout=np.arange(nqubits)[::-1], confidence=confidence)
+            raw_expectation_values, raw_expectation_values_confidence = measure_diagonal_observables(combined_real_samples_dicts[icirc], diagonal_observables, circ_layout=np.arange(nqubits)[::-1], confidence=confidence)
             p_arr = compute_depolarizing_probability(odr_expectation_values, 1, 0, odr_circuits[0, icirc].num_qubits)
-            p_std = compute_depolarizing_probability_std(odr_expectation_values_std, 1, 0, odr_circuits[0, icirc].num_qubits)
-            clean_expectation_values, clean_expectation_values_std = renormalize_observable(real_expectation_values, p_arr, 0, transpiled_circuits[0, icirc].num_qubits, observable_range=(-1, 1), p_std=p_std)
+            # p_confidence = compute_depolarizing_probability_confidence(odr_expectation_values_confidence, 1, 0, odr_circuits[0, icirc].num_qubits)
+            clean_expectation_values, clean_expectation_values_confidence = renormalize_observable(real_expectation_values, p_arr, 0, transpiled_circuits[0, icirc].num_qubits, observable_range=(-1, 1), expected_observable_arr=1, observable_confidence=real_expectation_values_confidence)
             observable_matrix[icirc, :] = clean_expectation_values
             real_observable_matrix[icirc, :] = real_expectation_values
             odr_observable_matrix[icirc, :] = odr_expectation_values
             raw_observable_matrix[icirc, :] = raw_expectation_values
-            if return_std:
-                observable_std_matrix[icirc, :] = clean_expectation_values_std
-                real_observable_std_matrix[icirc, :] = real_expectation_values_std
-                odr_observable_std_matrix[icirc, :] = odr_expectation_values_std
-                raw_observable_std_matrix[icirc, :] = raw_expectation_values_std
+            if confidence is not None:
+                observable_confidence_matrix[icirc, :, :] = clean_expectation_values_confidence
+                real_observable_confidence_matrix[icirc, :, :] = real_expectation_values_confidence
+                odr_observable_confidence_matrix[icirc, :, :] = odr_expectation_values_confidence
+                raw_observable_confidence_matrix[icirc, :, :] = raw_expectation_values_confidence
         else:
-            real_expectation_values, real_expectation_values_std = measure_diagonal_observables(combined_real_postselected_samples_dicts[icirc], diagonal_observables, circ_layout=np.arange(nqubits)[::-1], return_std=True)
-            raw_expectation_values, raw_expectation_values_std = measure_diagonal_observables(combined_real_samples_dict[icirc], diagonal_observables, circ_layout=np.arange(nqubits)[::-1], return_std=True)
+            real_expectation_values, real_expectation_values_confidence = measure_diagonal_observables(combined_real_postselected_samples_dicts[icirc], diagonal_observables, circ_layout=np.arange(nqubits)[::-1], confidence=confidence)
+            raw_expectation_values, raw_expectation_values_confidence = measure_diagonal_observables(combined_real_samples_dict[icirc], diagonal_observables, circ_layout=np.arange(nqubits)[::-1], confidence=confidence)
             observable_matrix[icirc, :] = real_expectation_values
             raw_observable_matrix[icirc, :] = raw_expectation_values
-            if return_std:
-                observable_std_matrix[icirc, :] = real_expectation_values_std
-                raw_observable_std_matrix[icirc, :] = raw_expectation_values_std
+            if confidence is not None:
+                observable_confidence_matrix[icirc, :] = real_expectation_values_confidence
+                raw_observable_confidence_matrix[icirc, :] = raw_expectation_values_confidence
 
     # Measure non-diagonal observables
     for observable in non_diagonal_observables:
@@ -1163,19 +1182,23 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
     # Return
     if odr_circuits is None:
         to_return = [[observable_matrix, raw_observable_matrix]]
-        if return_std:
-            to_return.append([observable_std_matrix, raw_observable_std_matrix])
+        if confidence is not None:
+            to_return.append([observable_confidence_matrix, raw_observable_confidence_matrix])
         if return_samples_dicts:
             to_return.append([real_samples_dicts])
         if return_postselected_samples_dicts:
             to_return.append([postselected_real_samples_dicts])
+        if return_layouts:
+            to_return.append(jobs_layout)
         return to_return if len(to_return) > 1 else to_return[0]
     else:
         to_return = [[observable_matrix, real_observable_matrix, odr_observable_matrix, raw_observable_matrix]]
-        if return_std:
-            to_return.append([observable_std_matrix, real_observable_std_matrix, odr_observable_std_matrix, raw_observable_std_matrix])
+        if confidence is not None:
+            to_return.append([observable_confidence_matrix, real_observable_confidence_matrix, odr_observable_confidence_matrix, raw_observable_confidence_matrix])
         if return_samples_dicts:
             to_return.append([real_samples_dicts, odr_samples_dicts])
         if return_postselected_samples_dicts:
             to_return.append([postselected_real_samples_dicts, postselected_odr_samples_dicts])
+        if return_layouts:
+            to_return.append(jobs_layout)
         return to_return if len(to_return) > 1 else to_return[0]
