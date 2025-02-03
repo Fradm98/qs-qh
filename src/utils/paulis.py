@@ -233,6 +233,11 @@ class PauliTensor:
         coeff_str = coeff_str.rstrip("0")
         if self.coefficient == 0:
             coeff_str = "0"
+        try:
+            if coeff_str[-1] =="*":
+                coeff_str = coeff_str[0:-1]
+        except IndexError:
+            pass
         if self.is_identity():
             pauli_strs = [""]
         else:
@@ -349,6 +354,23 @@ class PauliTensorSum:
             return PauliTensorSum(other, negself)
         elif isinstance(other, PauliTensorSum):
             return PauliTensorSum(*other.summands, *negself.summands)
+        else:
+            TypeError(f"can't substract PauliTensorSum and element of type \'{type(other)}\'")
+
+    def __mul__(self, other):
+        if isinstance(other, (int, float, complex)):
+            return PauliTensorSum(*[PauliTensor(summand.paulis, summand.coefficient*other) for summand in self.summands])
+        elif isinstance(other, PauliTensor):
+            products = []
+            for summand in self.summands:
+                products.append(summand*other)
+            return PauliTensorSum(*products)
+        elif isinstance(other, PauliTensorSum):
+            product = []
+            for selfsummand in self.summands:
+                for othersummand in other.summands:
+                    product.append(selfsummand*othersummand)
+            return PauliTensorSum(*product)
         else:
             TypeError(f"can't substract PauliTensorSum and element of type \'{type(other)}\'")
 
