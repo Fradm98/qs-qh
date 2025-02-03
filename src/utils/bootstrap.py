@@ -14,7 +14,6 @@ def bootstrap_sample_dict_mean(samples_dict, string_expectation_values, confiden
         observables_eigenvalues_counts[0, i] = np.sum(string_counts[np.equal(string_expectation_values[:, i], 1)])
         observables_eigenvalues_counts[1, i] = total_string_counts - observables_eigenvalues_counts[0, i]
     
-    normal_distribution = sp.stats.norm(loc=0, scale=1)
     confidence_intervals = []
     if return_std: stds = []
     for i in range(string_expectation_values.shape[1]):
@@ -55,6 +54,6 @@ def bootstrap_sample_dict_mean(samples_dict, string_expectation_values, confiden
         if return_std: stds.append(np.std(bootstrap_set))
 
     if return_std:
-        return np.array(confidence_intervals), np.std(bootstrap_set)
+        return np.array(confidence_intervals), stds
     else:
-        return np.array(ci_l, ci_u)
+        return np.array(confidence_intervals)
