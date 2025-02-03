@@ -156,12 +156,12 @@ def observable_depth_mitigation_comparison_plot(plot_dict, x_plot, y_lim=[], x_l
     plt.show()
     plt.rcdefaults()
 
-def plot_nflips_comparison(samples_dicts, postselection_operators, g_arr, circs_layout=None, filepath=""):
+def plot_nflips_comparison(samples_dicts, postselection_operators, g_arr, circs_layout=None, legend=True, filepath=""):
     plt.rc("text", usetex=True)
     plt.rc("font", size=20, family="serif", weight="bold")
 
-    if len(samples_dicts) != 2:
-        raise ValueError("Only two sample dicts can be compared")
+    if len(samples_dicts) > 2:
+        raise ValueError("At most two sample dicts can be compared")
 
     all_diagonal, basis = diagonal_operators_check(postselection_operators)
     if not all_diagonal:
@@ -212,20 +212,20 @@ def plot_nflips_comparison(samples_dicts, postselection_operators, g_arr, circs_
         ys.append(y_plot)
         bars.append(this_bars)
 
-    for i, (b0, b1) in enumerate(zip(bars[0], bars[1])):
-        if ys[0][i] > ys[1][i]:
-            b0.zorder = 3
-            b1.zorder = 5
-        else:
-            b0.zorder = 5
-            b1.zorder = 3
+    # for i, (b0, b1) in enumerate(zip(bars[0], bars[1])):
+    #     if ys[0][i] > ys[1][i]:
+    #         b0.zorder = 3
+    #         b1.zorder = 5
+    #     else:
+    #         b0.zorder = 5
+    #         b1.zorder = 3
 
     plt.xticks(x_plot)
     plt.xlabel(r"\# detected flips")
     plt.ylabel("Counts")
     plt.title(f"Total samples: {np.max(total_nflips)}", pad=8)
     plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
-    plt.legend()
+    if legend: plt.legend()
     plt.tight_layout()
     if filepath:
         plt.savefig(filepath, dpi=300, facecolor="none")
@@ -255,11 +255,11 @@ def plot_circuit_arr_depth(circuit_arr, x_ticks=None, x_label=None, filepath="")
     plt.show()
     plt.rcdefaults()
 
-def plot_individual_qubits_observable_evolution(observable_matrix, observable_std_matrix=None, ylabel=None, cmap=None, x_ticks=None, x_label=None, markers=None, funclabels=None, title="", legend=True, filepath=None):
+def plot_individual_qubits_observable_evolution(observable_matrix, observable_confidence_matrix=None, ylabel=None, cmap=None, x_ticks=None, x_label=None, markers=None, funclabels=None, title="", legend=True, filepath=None):
     observable_matrix = np.array(observable_matrix)
-    if observable_std_matrix is not None:
-        observable_std_matrix = np.array(observable_std_matrix)
-        if observable_matrix.shape != observable_std_matrix.shape:
+    if observable_confidence_matrix is not None:
+        observable_confidence_matrix = np.array(observable_confidence_matrix)
+        if observable_matrix.shape != observable_confidence_matrix.shape[:-1]:
             raise ValueError("Observable matrix and standard deviation matrix must have the same shape")
     if funclabels is not None:
         try:
@@ -287,9 +287,11 @@ def plot_individual_qubits_observable_evolution(observable_matrix, observable_st
     for i in range(observable_matrix.shape[1]):
         color = cmap((i % 8))
         y = observable_matrix[:, i]
-        if observable_std_matrix is not None:
-            yerr = observable_std_matrix[:, i]
-            plt.errorbar(x, y, yerr=yerr, fmt="--", marker=markers[i] if markers is not None else "o", markersize=10, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}")
+        if observable_confidence_matrix is not None:
+            minus_error = y - observable_confidence_matrix[:, i, 1]
+            plus_error = observable_confidence_matrix[:, i, 0] - y
+            yerr = np.array([minus_error, plus_error])
+            plt.errorbar(x, y, yerr=yerr, fmt="--", marker=markers[i] if markers is not None else "o", markersize=10, elinewidth=2, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}")
         else:
             plt.plot(x, y, "--", marker=markers[i] if markers is not None else "o", markersize=10, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}")
     plt.xlabel(x_label)
@@ -304,21 +306,22 @@ def plot_individual_qubits_observable_evolution(observable_matrix, observable_st
     plt.show()
     plt.rcdefaults()
 
-def plot_average_qubits_observable_evolution(observable_matrix, average_qubits, observable_std_matrix=None, cmap=None, x_ticks=None, x_label=None, y_ticks=None, ylabel=None, markers=None, funclabels=None, title="", legend=True, filepath=None):
+def plot_average_qubits_observable_evolution(observable_matrix, average_qubits, observable_confidence_matrix=None, cmap=None, x_ticks=None, x_label=None, y_ticks=None, ylabel=None, markers=None, funclabels=None, title="", legend=True, filepath=None):
     observable_matrix = np.array(observable_matrix)
-    if observable_std_matrix is not None:
-        observable_std_matrix = np.array(observable_std_matrix)
-        if observable_matrix.shape != observable_std_matrix.shape:
+    if observable_confidence_matrix is not None:
+        observable_confidence_matrix = np.array(observable_confidence_matrix)
+        if observable_matrix.shape != observable_confidence_matrix.shape[:-1]:
             raise ValueError("Observable matrix and standard deviation matrix must have the same shape")
     
     average_observable_matrix = np.zeros((observable_matrix.shape[0], len(average_qubits)))
-    if observable_std_matrix is not None: average_observable_std_matrix = np.zeros((observable_matrix.shape[0], len(average_qubits)))
+    if observable_confidence_matrix is not None:
+        average_observable_confidence_matrix = np.zeros((observable_matrix.shape[0], len(average_qubits), 2))
     for i, average_qubits_arr in enumerate(average_qubits):
         this_reduced_observable_matrix = observable_matrix[:, average_qubits_arr]
         average_observable_matrix[:, i] = np.nanmean(this_reduced_observable_matrix, axis=1)
-        if observable_std_matrix is not None:
-            this_reduced_observable_std_matrix = observable_std_matrix[:, average_qubits_arr]
-            average_observable_std_matrix[:, i] = np.nanmean(this_reduced_observable_std_matrix, axis=1)
+        if observable_confidence_matrix is not None:
+            this_reduced_observable_std_matrix = observable_confidence_matrix[:, average_qubits_arr, :]
+            average_observable_confidence_matrix[:, i, :] = np.nanmean(this_reduced_observable_std_matrix, axis=1)
     
     if cmap is None:
         cmap = plt.get_cmap("Set2")
@@ -337,10 +340,14 @@ def plot_average_qubits_observable_evolution(observable_matrix, average_qubits, 
         funclabels = [f"Line {i}" for i in range(len(average_qubits))]
     for i in range(len(average_qubits)):
         color = cmap((i % 8))
-        if observable_std_matrix is not None:
-            plt.errorbar(x, average_observable_matrix[:, i], yerr=average_observable_std_matrix[:, i], fmt="--", marker=markers[i] if markers is not None else "o", markersize=10, markeredgecolor="black", color=color, label=funclabels[i])
+        y = average_observable_matrix[:, i]
+        if observable_confidence_matrix is not None:
+            minus_error = y - average_observable_confidence_matrix[:, i, 1]
+            plus_error = average_observable_confidence_matrix[:, i, 0] - y
+            yerr = np.array([minus_error, plus_error])
+            plt.errorbar(x, y, yerr=yerr, fmt="--", marker=markers[i] if markers is not None else "o", markersize=10, elinewidth=1.5, markeredgecolor="black", color=color, label=funclabels[i])
         else:
-            plt.plot(x, average_observable_matrix[:, i], "--", marker=markers[i] if markers is not None else "o", markersize=10, markeredgecolor="black", color=color, label=funclabels[i])
+            plt.plot(x, y, "--", marker=markers[i] if markers is not None else "o", markersize=10, markeredgecolor="black", color=color, label=funclabels[i])
     plt.xlabel(x_label)
     plt.ylabel(ylabel, labelpad=10)
     if y_ticks is not None:
