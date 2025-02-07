@@ -141,7 +141,7 @@ def SecondOrderTrotter(lattice, Js, hs, lambdas, t_total, layers, g=None, x_basi
     return layer.repeat(layers).decompose()
 
 # --------------------------- 
-#    CIRCUIT TRANSPILATION
+#       TROTTER ERROR
 # ---------------------------
 
 def hamiltonian_interaction_terms(lattice, lamb):
@@ -190,6 +190,10 @@ def get_erradj_number_of_trotter_layers(times, eplg_absolute, lattice, J, h, lam
     error_hardware = 1 - (1-eplg_absolute)**layers_arr
     error_total = error_trotter + error_hardware
     return np.minimum(np.argmin(error_total, axis=1) + 1, max_layers)
+
+# --------------------------- 
+#    CIRCUIT TRANSPILATION
+# ---------------------------
 
 def string_quench_simulation_circuits(lattice, Js, hs, lambdas, string_qubits, final_time, layers, g=None, measure_every_layers=1, x_basis=False, barriers=False):
     initial_state_preparation = StringInitialStateCirc(lattice, string_qubits, x_basis)
