@@ -23,3 +23,6 @@ src/cobos/__pycache__/
 *.run.xml
 *.bib
 *.qpy
+*.npy
+*.txt
+*.pkl
