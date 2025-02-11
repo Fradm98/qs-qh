@@ -690,7 +690,8 @@ def execute_postselected_sampler_batch(backend, sampler_opt_dict, transpiled_cir
         shots = sampler_opt_dict.get("default_shots", 1)
         shots_per_layout = shots // transpiled_circuits.shape[0]
     else:
-        shots_per_layout = sampler_opt_dict.get("default_shots", 1)
+        shots = sampler_opt_dict.get("default_shots", 1)
+        shots_per_layout = shots
     
     if shots_per_layout > max_shots:
         nrepetitions = shots_per_layout // max_shots
@@ -701,11 +702,11 @@ def execute_postselected_sampler_batch(backend, sampler_opt_dict, transpiled_cir
         for i in range(nrepetitions):
             this_options = sampler_opt_dict.copy()
             if i == nrepetitions-1:
-                this_options["default_shots"] = last_rep_shots
+                this_options["default_shots"] = last_rep_shots if last_rep_shots != 0 else max_shots
             else:
                 this_options["default_shots"] = max_shots
             sampler_options_per_layout.append(this_options)
-        if last_rep_shots == 0:
+        if last_rep_shots == 0 and len(sampler_options_per_layout) != nrepetitions:
             sampler_options_per_layout.pop()
     else:
         nrepetitions = 1
@@ -725,7 +726,7 @@ def execute_postselected_sampler_batch(backend, sampler_opt_dict, transpiled_cir
     # First send diagonal jobs
     job_objs = []
     for i, this_layout_circs in enumerate(circuits_to_run):
-        this_jobs = execute_sampler_batch(backend, sampler_options_per_layout, this_layout_circs[odr_circuits.shape[-1]:], this_layout_circs[:odr_circuits.shape[-1]] if odr_circuits is not None else None, batch=batch)
+        this_jobs = execute_sampler_batch(backend, sampler_options_per_layout, transpiled_circuits[i], extra_circuits=odr_circuits[i] if odr_circuits is not None else None, batch=batch)
         job_objs.append(this_jobs)
     job_objs = np.array(job_objs)
 
@@ -1132,6 +1133,11 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
     # with mp.Pool(processes=mp.cpu_count()) as pool:
     #     jobs = pool.starmap(load_job_from_local_or_ibmq, mpfuncargs)
     
+    jobs = []
+    for job_id in job_ids:
+        if verbose: print(f"\rLoading job {job_id}...".ljust(100), end="")
+        job = load_job_from_local_or_ibmq(job_id, ibmq_service, jobs_result_folder)
+        jobs.append(job)
     jobs = [load_job_from_local_or_ibmq(job_id, ibmq_service, jobs_result_folder) for job_id in job_ids]
     if odr_circuits is not None:
         newdims = (transpiled_circuits.shape[0], odr_circuits.shape[1] + nrepetitions*transpiled_circuits.shape[1])
