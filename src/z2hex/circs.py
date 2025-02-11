@@ -158,8 +158,9 @@ def hamiltonian_interaction_terms(lattice, lamb):
     return PauliTensorSum(*tensors_to_sum)
 
 def hamiltonian_diagonal_terms(lattice, J, h):
+    matter_qubits = [lattice.coords_to_logical_qb(node_coords) for node_coords in lattice.node_coords]
     all_qubits = np.arange(len(lattice))
-    tensors_to_sum = [PauliTensor([Pauli(3) if j == this_qubit else One for j in all_qubits], coefficient=-J if this_qubit%2==0 else -h) for this_qubit in all_qubits]
+    tensors_to_sum = [PauliTensor([Pauli(3) if j == this_qubit else One for j in all_qubits], coefficient=-J if this_qubit in matter_qubits else -h) for this_qubit in all_qubits]
     return PauliTensorSum(*tensors_to_sum)
 
 def trotter_error(t, lattice, J, h, lamb):
@@ -225,7 +226,7 @@ def get_layouts(lattice, backend, layout_first_or_all=None, forbidden_qubits=[])
             else:
                 to_return.append(layout)
         return to_return
-
+    
 def string_quench_simulation_circuits_dt(lattice, Js, hs, lambdas, string_qubits, final_time, dt, steps, backend, optimization_level, g=None, layouts=None, x_basis=False, force_even=True, barriers=False):
     Js = np.array(Js)
     hs = np.array(hs)
@@ -245,46 +246,36 @@ def string_quench_simulation_circuits_dt(lattice, Js, hs, lambdas, string_qubits
             raise ValueError("The number of rows in the Js, hs and lambdas parameters must be equal to the number of steps")
     else:
         raise ValueError("The parameters Js, hs and lambdas must be scalars, vectors or matrices")
+    try:
+        if (fractional_gates := backend.options.use_fractional_gates):
+            sched_pm = PassManager([ALAPScheduleAnalysis(backend.instruction_durations), PadDelay(backend.instruction_durations)])
+    except AttributeError:
+        fractional_gates = False
     t_arr = np.linspace(0, final_time, steps+1)
     nlayers_arr = (t_arr // dt + 1).astype(int)
     if force_even:
         nlayers_arr[~np.equal(nlayers_arr % 2, 0)] += 1
     dt_arr = t_arr / nlayers_arr
     state_preparation_logical_circ = StringInitialStateCirc(lattice, string_qubits, x_basis)
-    try:
-        if (fractional_gates := backend.options.use_fractional_gates):
-            sched_pm = PassManager([ALAPScheduleAnalysis(backend.instruction_durations), PadDelay(backend.instruction_durations)])
-    except AttributeError:
-        fractional_gates = False
     circs_to_return = []
     for layout in layouts:
         layout = np.array(layout)
         trotter_pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=layout)
         state_preparation_physical_circ = trotter_pm.run(state_preparation_logical_circ)
-        measured_state_preparation_circuit = QuantumCircuit(len(lattice), len(lattice))
-        measured_state_preparation_circuit = measured_state_preparation_circuit.compose(state_preparation_logical_circ)
-        state_preparation_physical_circ = trotter_pm.run(measured_state_preparation_circuit)
-        measured_state_preparation_physical_circ = state_preparation_physical_circ.copy()
-        measured_state_preparation_physical_circ.measure(layout[np.argsort(layout)], np.argsort(layout[np.argsort(layout)]))
         if fractional_gates:
-            measured_state_preparation_physical_circ = sched_pm.run(measured_state_preparation_physical_circ)
-        this_layout_circs = [measured_state_preparation_physical_circ]
-        sqcancel_pm = PassManager([Optimize1qGates(target=backend.target), Optimize1qGatesDecomposition(target=backend.target), Optimize1qGatesSimpleCommutation(target=backend.target)])
+            state_preparation_physical_circ = sched_pm.run(state_preparation_physical_circ)
+        this_layout_circs = [state_preparation_physical_circ]
         for i in range(steps):
             this_trotter_layer_logical_circuit = SecondOrderTrotter(lattice, Js[i], hs[i], lambdas[i], dt_arr[i+1], 1, g=g, x_basis=x_basis, barriers=barriers)
-            this_trotter_layer_physical_circuit = trotter_pm.run(this_trotter_layer_logical_circuit)
-            state_preparation_physical_circ = trotter_pm.run(state_preparation_logical_circ)
-            this_time_physical_circuit = state_preparation_physical_circ.compose(this_trotter_layer_physical_circuit.repeat(nlayers_arr[i+1])).decompose()
-            this_time_physical_circuit = remove_idle_qwires(this_time_physical_circuit, relabeling=np.arange(len(layout))[np.argsort(layout)])
-            layout_dict = {layout[i]:this_time_physical_circuit.qubits[i] for i in range(this_time_physical_circuit.num_qubits)}
-            layout_pm = PassManager([SetLayout(layout=Layout(layout_dict)), FullAncillaAllocation(coupling_map=backend.target), ApplyLayout()])
-            sqopt_pm = StagedPassManager(stages=["optimization", "layout"], layout=layout_pm, optimization=sqcancel_pm)
-            this_time_physical_circuit = sqopt_pm.run(this_time_physical_circuit)
-            this_layout_circs.append(this_time_physical_circuit)
+            this_logical_circuit = state_preparation_logical_circ.compose(this_trotter_layer_logical_circuit.repeat(nlayers_arr[i+1])).decompose()
+            this_physical_circuit = trotter_pm.run(this_logical_circuit)
+            if fractional_gates:
+                this_physical_circuit = sched_pm.run(this_physical_circuit)
+            this_layout_circs.append(this_physical_circuit)
         circs_to_return.append(this_layout_circs)
     return circs_to_return
 
-def odr_compuncomp_circuits_dt(lattice, Js, hs, lambdas, final_time, dt, steps, backend, g=None, string_qubits=None, layouts=None, x_basis=False, barriers=False):
+def odr_compuncomp_circuits_dt(lattice, Js, hs, lambdas, final_time, dt, steps, backend, optimization_level, g=None, string_qubits=None, layouts=None, x_basis=False, barriers=False):
     Js = np.array(Js)
     hs = np.array(hs)
     lambdas = np.array(lambdas)
@@ -303,40 +294,37 @@ def odr_compuncomp_circuits_dt(lattice, Js, hs, lambdas, final_time, dt, steps, 
             raise ValueError("The number of rows in the Js, hs and lambdas parameters must be equal to the number of steps")
     else:
         raise ValueError("The parameters Js, hs and lambdas must be scalars, vectors or matrices")
+    try:
+        if (fractional_gates := backend.options.use_fractional_gates):
+            sched_pm = PassManager([ALAPScheduleAnalysis(backend.instruction_durations), PadDelay(backend.instruction_durations)])
+    except AttributeError:
+        fractional_gates = False
     t_arr = np.linspace(0, final_time, steps+1)
     nlayers_arr = (t_arr // dt + 1).astype(int)
-    odd_layers = ~np.equal(nlayers_arr % 2, 0)
-    nlayers_arr[odd_layers] = nlayers_arr[odd_layers] + 1
+    nlayers_arr[~np.equal(nlayers_arr % 2, 0)] += 1
     dt_arr = t_arr / nlayers_arr
+    if string_qubits is not None:
+        state_preparation_logical_circ = StringInitialStateCirc(lattice, string_qubits, x_basis)
+    else:
+        state_preparation_logical_circ = QuantumCircuit(len(lattice))
     circs_to_return = []
     for layout in layouts:
         layout = np.array(layout)
-        trotter_pm = generate_preset_pass_manager(optimization_level=0, backend=backend, initial_layout=layout)
-        if string_qubits is None:
-            first_circuit = QuantumCircuit(len(lattice))
-            first_circuit.measure_all()
-            first_physical_circuit = trotter_pm.run(first_circuit)
-        else:
-            first_circuit = StringInitialStateCirc(lattice, string_qubits, x_basis)
-            first_physical_circuit = QuantumCircuit(len(lattice), len(lattice))
-            first_physical_circuit.compose(first_physical_circuit)
-            first_physical_circuit = trotter_pm.run(first_physical_circuit)
-            final_index_layout = first_physical_circuit.layout.final_index_layout()
-            first_physical_circuit.measure(np.array(final_index_layout)[np.argsort(final_index_layout)], np.argsort(np.array(final_index_layout)[np.argsort(final_index_layout)]))
-        this_layout_circs = [first_physical_circuit]
-        sqcancel_pm = PassManager([Optimize1qGates(target=backend.target), Optimize1qGatesDecomposition(target=backend.target), Optimize1qGatesSimpleCommutation(target=backend.target)])
+        trotter_pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=layout)
+        state_preparation_physical_circ = trotter_pm.run(state_preparation_logical_circ)
+        if fractional_gates:
+            state_preparation_physical_circ = sched_pm.run(state_preparation_physical_circ)
+        this_layout_circs = [state_preparation_physical_circ]
         for i in range(steps):
-            forwards_trotter_layer = SecondOrderTrotter(lattice, Js[i], hs[i], lambdas[i], dt_arr[i+1], 1, g, x_basis, barriers)
-            backwards_trotter_layer = SecondOrderTrotter(lattice, Js[i], hs[i], lambdas[i], -dt_arr[i+1], 1, g, x_basis, barriers)
-            forwards_physical_trotter_layer = trotter_pm.run(forwards_trotter_layer)
-            backwards_physical_trotter_layer = trotter_pm.run(backwards_trotter_layer)
-            this_time_circuit = forwards_physical_trotter_layer.repeat(nlayers_arr[i+1]//2)
-            this_time_circuit = this_time_circuit.compose(backwards_physical_trotter_layer.repeat(nlayers_arr[i+1]//2)).decompose()
-            this_time_circuit = remove_idle_qwires(this_time_circuit, relabeling=np.arange(len(layout))[np.argsort(layout)])
-            layout_dict = {layout[i]:this_time_circuit.qubits[i] for i in range(this_time_circuit.num_qubits)}
-            layout_pm = PassManager([SetLayout(layout=Layout(layout_dict)), FullAncillaAllocation(coupling_map=backend.target), ApplyLayout()])
-            sqopt_pm = StagedPassManager(stages=["optimization", "layout"], layout=layout_pm, optimization=sqcancel_pm)
-            this_time_circuit = sqopt_pm.run(this_time_circuit)
-            this_layout_circs.append(this_time_circuit)
+            this_forward_trotter_layer_logical_circuit = SecondOrderTrotter(lattice, Js[i], hs[i], lambdas[i], dt_arr[i+1], 1, g=g, x_basis=x_basis, barriers=barriers)
+            this_backwards_trotter_layer_logical_circuit = this_forward_trotter_layer_logical_circuit.inverse()
+            this_time_logical_circ = state_preparation_logical_circ.compose(this_forward_trotter_layer_logical_circuit.repeat(nlayers_arr[i+1]//2)).decompose()
+            this_time_logical_circ.barrier()
+            this_time_logical_circ = this_time_logical_circ.compose(this_backwards_trotter_layer_logical_circuit.repeat(nlayers_arr[i+1]//2)).decompose()
+            this_time_logical_circ.compose(state_preparation_logical_circ).decompose()
+            this_time_physical_circ = trotter_pm.run(this_time_logical_circ)
+            if fractional_gates:
+                this_time_physical_circ = sched_pm.run(this_time_physical_circ)
+            this_layout_circs.append(this_time_physical_circ)
         circs_to_return.append(this_layout_circs)
     return circs_to_return
