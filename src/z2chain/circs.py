@@ -83,22 +83,28 @@ class TotalInteractionPropagatorDD(QuantumCircuit):
         first_cnots_ctrl_qubits = np.arange(1, nqubits, 2)
         second_cnots_trgt_qubits = np.arange(2, nqubits, 2)
         t_lamb = Parameter("t_lamb")
-        # random_times = np.random.normal(t_g, std_tg_factor*np.abs(t_g), chain_length)
-        random_times = np.random.uniform(0, t_g, chain_length)
+        t_g = np.array(t_g)
+        if t_g.ndim == 0:
+            t_g = np.full(chain_length, t_g)
+        elif t_g.ndim > 1:
+            raise ValueError(f"t_g should be a scalar or an array of shape ({chain_length},)")
+        else:
+            if t_g.shape[0] != chain_length:
+                raise ValueError(f"t_g should be a scalar or an array of shape ({chain_length},)")
         super().__init__(nqubits)
         if x_basis:
             self.cx(first_cnots_trgt_qubits, first_cnots_ctrl_qubits)
             self.cx(second_cnots_trgt_qubits, first_cnots_ctrl_qubits)
             for i, qind in enumerate(range(0, nqubits, 2)):
-                self.rx(-2*random_times[i], qind)
-            self.rz(-2*t_lamb, np.arange(1, nqubits, 2))
+                self.rx(-2*t_g[i], qind)
+            self.rz(-2*t_g, np.arange(1, nqubits, 2))
             self.cx(second_cnots_trgt_qubits, first_cnots_ctrl_qubits)
             self.cx(first_cnots_trgt_qubits, first_cnots_ctrl_qubits)
         else:
             self.cx(first_cnots_ctrl_qubits, first_cnots_trgt_qubits)
             self.cx(first_cnots_ctrl_qubits, second_cnots_trgt_qubits)
             for i, qind in enumerate(range(0, nqubits, 2)):
-                self.rz(-2*random_times[i], qind)
+                self.rz(-2*t_g[i], qind)
             self.rx(-2*t_lamb, np.arange(1, nqubits, 2))
             self.cx(first_cnots_ctrl_qubits, second_cnots_trgt_qubits)
             self.cx(first_cnots_ctrl_qubits, first_cnots_trgt_qubits)
@@ -107,12 +113,22 @@ class particle_pair_initial_state(QuantumCircuit):
     def __init__(self, chain_length, left_particle_position, particle_pair_length=1, x_basis=False):
         nqubits = 2*chain_length - 1
         super().__init__(nqubits)
+        gate_qubits = [2*left_particle_position] + list(range(2*left_particle_position+1, 2*(left_particle_position + particle_pair_length), 2)) + [2*(left_particle_position + particle_pair_length)]
         if particle_pair_length > 0:
             if x_basis:
-                self.h(range(nqubits))
-                self.z(range(2*left_particle_position, 2*(left_particle_position + particle_pair_length) + 1))
+                self.z(gate_qubits)
             else:
-                self.x(range(2*left_particle_position, 2*(left_particle_position + particle_pair_length) + 1))
+                self.x(gate_qubits)
+
+class single_particle_initial_state(QuantumCircuit):
+    def __init__(self, chain_length, particle_position, x_basis=False):
+        nqubits = 2*chain_length - 1
+        super().__init__(nqubits)
+        gate_qubits = [2*particle_position] + list(range(2*particle_position+1, nqubits, 2))
+        if x_basis:
+            self.z(gate_qubits)
+        else:
+            self.x(gate_qubits)
 
 def FirstOrderTrotter(chain_length, J, h, lamb, t_total, layers, sqrot_first=False, x_basis=False, barriers=False):
     t_layer = t_total/layers
@@ -218,20 +234,23 @@ def string_quench_simulation_circuits_dt(chain_length, J, h, lamb, particle_pair
         fractional_gates = False
     trotter_pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=layout)
     state_preparation_logical_circ = particle_pair_initial_state(chain_length, particle_pair_left_position, particle_pair_length, x_basis=x_basis)
-    state_preparation_physical_circ = trotter_pm.run(state_preparation_logical_circ)
+    measured_state_preparation_logical_circ = state_preparation_logical_circ.copy()
+    measured_state_preparation_logical_circ.measure_all()
+    state_preparation_physical_circ = trotter_pm.run(measured_state_preparation_logical_circ)
     if fractional_gates:
         state_preparation_physical_circ = sched_pm.run(state_preparation_physical_circ)
     circs_to_return = [state_preparation_physical_circ]
     for i in range(steps):
-        this_trotter_logical_layer = SecondOrderTrotter(chain_length, J, h, lamb, dt_arr[i+1], 1, g=g, x_basis=x_basis, barriers=barriers)
+        this_trotter_logical_layer = SecondOrderTrotter(chain_length, J, h, lamb, dt_arr[i+1], 1, g=J*dt_arr[i+1] if g is not None else g, x_basis=x_basis, barriers=barriers)
         this_time_logical_circ = state_preparation_logical_circ.compose(this_trotter_logical_layer.repeat(nlayers_arr[i+1])).decompose()
+        this_time_logical_circ.measure_all()
         this_time_physical_circ = trotter_pm.run(this_time_logical_circ)
         if fractional_gates:
             this_time_physical_circ = sched_pm.run(this_time_physical_circ)
         circs_to_return.append(this_time_physical_circ)
     return circs_to_return
 
-def odr_compuncomp_circuits_dt(chain_length, J, h, lamb, final_time, dt, steps, backend, optimization_level, g=None, particle_pair_left_position=None, particle_pair_length=None, layout=None, x_basis=False, barriers=False):
+def string_quench_odr_compuncomp_circuits_dt(chain_length, J, h, lamb, final_time, dt, steps, backend, optimization_level, g=None, particle_pair_left_position=None, particle_pair_length=None, layout=None, x_basis=False, barriers=False):
     t_arr = np.linspace(0, final_time, steps+1)
     nlayers_arr = (t_arr // dt + 1).astype(int)
     nlayers_arr[~np.equal(nlayers_arr % 2, 0)] += 1
@@ -246,18 +265,112 @@ def odr_compuncomp_circuits_dt(chain_length, J, h, lamb, final_time, dt, steps, 
         state_preparation_logical_circ = particle_pair_initial_state(chain_length, particle_pair_left_position, particle_pair_length, x_basis=x_basis)
     else:
         state_preparation_logical_circ = QuantumCircuit(2*chain_length-1)
-    state_preparation_physical_circ = trotter_pm.run(state_preparation_logical_circ)
+    first_circuit = QuantumCircuit(2*chain_length-1)
+    measured_first_circuit = first_circuit.copy()
+    measured_first_circuit.measure_all()
+    state_preparation_physical_circ = trotter_pm.run(measured_first_circuit)
     if fractional_gates:
         state_preparation_physical_circ = sched_pm.run(state_preparation_physical_circ)
     circs_to_return = [state_preparation_physical_circ]
     for i in range(steps):
-        this_forwards_trotter_logical_layer = SecondOrderTrotter(chain_length, J, h, lamb, dt_arr[i+1], 1, g=g, x_basis=x_basis, barriers=barriers)
+        this_forwards_trotter_logical_layer = SecondOrderTrotter(chain_length, J, h, lamb, dt_arr[i+1], 1, g=J*dt_arr[i+1] if g is not None else g, x_basis=x_basis, barriers=barriers)
         this_backwards_trotter_logical_layer = this_forwards_trotter_logical_layer.inverse()
         this_time_logical_circ = state_preparation_logical_circ.compose(this_forwards_trotter_logical_layer.repeat(nlayers_arr[i+1]//2)).decompose()
         this_time_logical_circ.barrier()
         this_time_logical_circ = this_time_logical_circ.compose(this_backwards_trotter_logical_layer.repeat(nlayers_arr[i+1]//2)).decompose()
+        this_time_logical_circ = this_time_logical_circ.compose(state_preparation_logical_circ).decompose()
+        this_time_logical_circ.measure_all()
         this_time_physical_circ = trotter_pm.run(this_time_logical_circ)
         if fractional_gates:
             this_time_physical_circ = sched_pm.run(this_time_physical_circ)
         circs_to_return.append(this_time_physical_circ)
     return circs_to_return
+
+def string_quench_simulation_and_odr_circs(chain_length, J, h, lamb, particle_pair_left_position, particle_pair_length, final_time, dt, steps, backend, optimization_level, g=None, layout=None, x_basis=False, barriers=False):
+    seed = np.random.randint(100000)
+    np.random.seed(seed)
+    simulation_circuits = string_quench_simulation_circuits_dt(chain_length, J, h, lamb, particle_pair_left_position, particle_pair_length, final_time, dt, steps, backend, optimization_level, g, layout, x_basis, force_even=True, barriers=barriers)
+    np.random.seed(seed)
+    odr_circuits = string_quench_odr_compuncomp_circuits_dt(chain_length, J, h, lamb, final_time, dt, steps, backend, optimization_level, g, None, None, layout, x_basis, barriers)
+    np.random.seed()
+    return simulation_circuits, odr_circuits
+
+def singlep_quench_simulation_circuits_dt(chain_length, J, h, lamb, particle_position, final_time, dt, steps, backend, optimization_level, g_func=0, layout=None, x_basis=False, barriers=False):
+    # g_func: func taking three arguments, chain_length, and steps, step and returning corresponding g arr
+    t_arr = np.linspace(0, final_time, steps+1)
+    nlayers_arr = (t_arr // dt + 1).astype(int)
+    nlayers_arr[~np.equal(nlayers_arr % 2, 0)] += 1
+    dt_arr = t_arr / nlayers_arr
+    try:
+        if (fractional_gates := backend.options.use_fractional_gates):
+            sched_pm = PassManager([ALAPScheduleAnalysis(backend.instruction_durations), PadDelay(backend.instruction_durations)])
+    except AttributeError:
+        fractional_gates = False
+    trotter_pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=layout)
+    state_preparation_logical_circ = single_particle_initial_state(chain_length, particle_position, x_basis=x_basis)
+    measured_state_preparation_logical_circ = state_preparation_logical_circ.copy()
+    measured_state_preparation_logical_circ.measure_all()
+    state_preparation_physical_circ = trotter_pm.run(measured_state_preparation_logical_circ)
+    if fractional_gates:
+        state_preparation_physical_circ = sched_pm.run(state_preparation_physical_circ)
+    circs_to_return = [state_preparation_physical_circ]
+    logical_time_circs = [state_preparation_logical_circ]
+    for i in range(steps):
+        if callable(g_func):
+            g = [g_func(chain_length, nlayers_arr[i+1], k) for k in range(nlayers_arr[i+1])]
+        this_trotter_logical_layer = SecondOrderTrotter(chain_length, J, h, lamb, dt_arr[i+1], 1, g=g, x_basis=x_basis, barriers=barriers)
+        this_time_logical_circ = logical_time_circs[-1].copy()
+        this_time_logical_circ 
+        # this_trotter_logical_layer = SecondOrderTrotter(chain_length, J, h, lamb, dt_arr[i+1], 1, g=g, x_basis=x_basis, barriers=barriers)
+        this_time_logical_circ = state_preparation_logical_circ.compose(this_trotter_logical_layer.repeat(nlayers_arr[i+1])).decompose()
+        this_time_logical_circ.measure_all()
+        this_time_physical_circ = trotter_pm.run(this_time_logical_circ)
+        if fractional_gates:
+            this_time_physical_circ = sched_pm.run(this_time_physical_circ)
+        circs_to_return.append(this_time_physical_circ)
+    return circs_to_return
+
+def singlep_quench_odr_compuncomp_circuits_dt(chain_length, J, h, lamb, final_time, dt, steps, backend, optimization_level, g=None, particle_position=None, layout=None, x_basis=False, barriers=False):
+    t_arr = np.linspace(0, final_time, steps+1)
+    nlayers_arr = (t_arr // dt + 1).astype(int)
+    nlayers_arr[~np.equal(nlayers_arr % 2, 0)] += 1
+    dt_arr = t_arr / nlayers_arr
+    try:
+        if (fractional_gates := backend.options.use_fractional_gates):
+            sched_pm = PassManager([ALAPScheduleAnalysis(backend.instruction_durations), PadDelay(backend.instruction_durations)])
+    except AttributeError:
+        fractional_gates = False
+    trotter_pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=layout)
+    if particle_position is not None:
+        state_preparation_logical_circ = single_particle_initial_state(chain_length, particle_position, x_basis=x_basis)
+    else:
+        state_preparation_logical_circ = QuantumCircuit(2*chain_length-1)
+    measured_state_preparation_logical_circ = state_preparation_logical_circ.copy()
+    measured_state_preparation_logical_circ.measure_all()
+    state_preparation_physical_circ = trotter_pm.run(measured_state_preparation_logical_circ)
+    if fractional_gates:
+        state_preparation_physical_circ = sched_pm.run(state_preparation_physical_circ)
+    circs_to_return = [state_preparation_physical_circ]
+    for i in range(steps):
+        this_forwards_trotter_logical_layer = SecondOrderTrotter(chain_length, J, h, lamb, dt_arr[i+1], 1, g=J*dt_arr[i+1] if g is not None else g, x_basis=x_basis, barriers=barriers)
+        # this_forwards_trotter_logical_layer = SecondOrderTrotter(chain_length, J, h, lamb, dt_arr[i+1], 1, g=g, x_basis=x_basis, barriers=barriers)
+        this_backwards_trotter_logical_layer = this_forwards_trotter_logical_layer.inverse()
+        this_time_logical_circ = state_preparation_logical_circ.compose(this_forwards_trotter_logical_layer.repeat(nlayers_arr[i+1]//2)).decompose()
+        this_time_logical_circ.barrier()
+        this_time_logical_circ = this_time_logical_circ.compose(this_backwards_trotter_logical_layer.repeat(nlayers_arr[i+1]//2)).decompose()
+        this_time_logical_circ = this_time_logical_circ.compose(state_preparation_logical_circ).decompose()
+        this_time_logical_circ.measure_all()
+        this_time_physical_circ = trotter_pm.run(this_time_logical_circ)
+        if fractional_gates:
+            this_time_physical_circ = sched_pm.run(this_time_physical_circ)
+        circs_to_return.append(this_time_physical_circ)
+    return circs_to_return
+
+def singlep_quench_simulation_and_odr_circs(chain_length, J, h, lamb, particle_position, final_time, dt, steps, backend, optimization_level, g=None, layout=None, x_basis=False, barriers=False):
+    seed = np.random.randint(100000)
+    np.random.seed(seed)
+    simulation_circuits = singlep_quench_simulation_circuits_dt(chain_length, J, h, lamb, particle_position, final_time, dt, steps, backend, optimization_level, g, layout, x_basis, barriers=barriers)
+    np.random.seed(seed)
+    odr_circuits = singlep_quench_odr_compuncomp_circuits_dt(chain_length, J, h, lamb, final_time, dt, steps, backend, optimization_level, g, None, layout, x_basis, barriers)
+    np.random.seed()
+    return simulation_circuits, odr_circuits
