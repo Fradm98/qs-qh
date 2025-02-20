@@ -730,7 +730,7 @@ def execute_postselected_sampler_batch(backend, sampler_opt_dict, transpiled_cir
         job_objs.append(this_jobs)
     job_objs = np.array(job_objs)
 
-    batch.close()
+    # batch.close()
 
     # Diagonalize each non-diagonal observable and send a batch of jobs to avoid long circuits
     for observable in non_diagonal_observables:
@@ -843,6 +843,8 @@ def get_logical_samples_dict(samples_dict, circ_layout):
     new_layout_dict = {}
     strings_arr = np.array([[int(c) for c in state_string] for state_string in samples_dict.keys()])
     if len(strings_arr) > 0:
+        if strings_arr.shape[1] != len(circ_layout):
+            return {}
         logical_strings_arr = get_layout_state(strings_arr, circ_layout)
         fmt_str = "%i"*logical_strings_arr.shape[1]
         for i, state_string in enumerate(samples_dict.keys()):
@@ -972,13 +974,20 @@ def load_job_from_local_or_ibmq(job_id, ibmq_service, jobs_result_folder):
 
 def multiprocess_nrepetitions_combine_samples_dicts(samples_dicts, transpiled_circuits_shape, nrepetitions):
     indices = np.array(list(product(range(transpiled_circuits_shape[0]), range(transpiled_circuits_shape[1]))))
-    print(len(samples_dicts[indices[0, 0], indices[0, 1]::transpiled_circuits_shape[1]]))
+    grouped_samples_dicts = []
+    for i_layout in range(transpiled_circuits_shape[0]):
+        this_layout_samples = []
+        for i_circ in range(transpiled_circuits_shape[1]):
+            this_layout_samples.append(samples_dicts[i_layout, i_circ::transpiled_circuits_shape[1]])
+        grouped_samples_dicts.append(tuple(this_layout_samples))
+    grouped_samples_dicts = np.array(grouped_samples_dicts, dtype=object)
+    grouped_samples_dicts = grouped_samples_dicts.reshape((-1, grouped_samples_dicts.shape[-1]))
     with mp.Pool(processes=mp.cpu_count()) as pool:
-        combined_samples_dicts = pool.starmap(combine_samples_dicts, [samples_dicts[indices[i, 0], indices[i, 1]::transpiled_circuits_shape[1]] for i in range(nrepetitions)])
+        combined_samples_dicts = pool.starmap(combine_samples_dicts, grouped_samples_dicts)
     combined_samples_dicts = np.array(combined_samples_dicts).reshape(transpiled_circuits_shape)
-    return combined_samples_dicts
+    return combined_samples_dicts.reshape(transpiled_circuits_shape)
 
-def multiprocess_get_logical_samples_dicts(samples_dicts, layouts):
+def multiprocess_get_logical_samples_dicts(samples_dicts, layouts, recovery_function=None):
     samples_dicts = np.array(samples_dicts)
     layouts = np.array(layouts)
     if samples_dicts.shape != layouts.shape[:-1]:
@@ -992,16 +1001,21 @@ def multiprocess_layouts_combine_samples_dicts(samples_dicts):
     samples_dicts = np.array(samples_dicts)
     icirc_indices = np.arange(samples_dicts.shape[1])
     with mp.Pool(processes=mp.cpu_count()) as pool:
-        combined_samples_dicts = pool.starmap(combine_samples_dicts, [samples_dicts[:, i] for i in icirc_indices])
+        combined_samples_dicts = pool.starmap(combine_samples_dicts, [tuple(samples_dicts[:, i]) for i in icirc_indices])
     return np.array(combined_samples_dicts)
 
-def get_recovered_dict_with_basis(samples_dict, postselection_ops, basis, flip_threshold=None):
+def get_recovered_dict_with_basis(samples_dict, postselection_ops, basis, flip_threshold=None, flipped_syndromes=None):
     if len(samples_dict) == 0:
         return {}
     strings_arr = np.array([[int(c) for c in string] for string in samples_dict.keys()])
     postselection_mask = np.array([[int(str(opel) == basis) for opel in operator] for operator in postselection_ops])
+    if flipped_syndromes is not None:
+        if len(flipped_syndromes) != postselection_mask.shape[0]:
+            raise ValueError("flipped syndromes must be the same length as postselection_ops")
     decoder = Matching(postselection_mask)
     string_syndromes = (strings_arr @ postselection_mask.T) % 2
+    if flipped_syndromes is not None:
+        string_syndromes = (string_syndromes + flipped_syndromes) % 2
     predicted_flips = decoder.decode_batch(string_syndromes)
     npredicted_flips = predicted_flips.sum(axis=1)
     recovered_strings = (strings_arr + predicted_flips) % 2
@@ -1018,8 +1032,10 @@ def get_recovered_dict_with_basis(samples_dict, postselection_ops, basis, flip_t
             recovered_samples_dict[recovered_string] = samples_dict[string]
     return recovered_samples_dict
 
-def multiprocess_get_postselected_recovered_samples_dicts(samples_dicts, postselection_ops, flip_threshold):
+def multiprocess_get_postselected_recovered_samples_dicts(samples_dicts, postselection_ops, flip_threshold=None, flipped_syndromes=None, recovery_function=None):
     all_diagonal, basis = diagonal_operators_check(postselection_ops)
+    if recovery_function is None:
+        recovery_function = get_recovered_dict_with_basis
     if not all_diagonal:
         raise ValueError("Only supports diagonal postselection operators in some basis")
     try:
@@ -1031,7 +1047,7 @@ def multiprocess_get_postselected_recovered_samples_dicts(samples_dicts, postsel
     samples_dicts = samples_dicts.flatten()
     indices = np.arange(len(samples_dicts))
     with mp.Pool(processes=mp.cpu_count()) as pool:
-        recovered_samples_dicts = pool.starmap(get_recovered_dict_with_basis, [(samples_dicts[i], postselection_ops, basis, flip_threshold) for i in indices])
+        recovered_samples_dicts = pool.starmap(recovery_function, [(samples_dicts[i], postselection_ops, basis, flip_threshold, flipped_syndromes) for i in indices])
     return np.array(recovered_samples_dicts).reshape(og_samples_dicts_shape)
 
 def measure_diagonal_observables_with_basis(samples_dict, diagonal_observables, basis, confidence=None):
@@ -1085,7 +1101,12 @@ def multiprocess_measure_diagonal_observables(samples_dicts, diagonal_observable
 def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_circuits, postselect_generating_func, observable_generating_funcs, extra_options=None, job_index=0, recovery=True, flip_threshold=None, jobs_result_folder="", confidence=None, return_samples_dicts=False, return_postselected_samples_dicts=False, return_layouts=False, odr_circuits=None, max_shots=75000, verbose=False):
     # Preparation    
     transpiled_circuits = numpy_array_of_circuits(transpiled_circuits)
-    if odr_circuits is not None: odr_circuits = numpy_array_of_circuits(odr_circuits)
+    if len(transpiled_circuits.shape) < 2:
+        transpiled_circuits = transpiled_circuits[None]
+    if odr_circuits is not None: 
+        odr_circuits = numpy_array_of_circuits(odr_circuits)
+        if len(odr_circuits.shape) < 2:
+            odr_circuits = odr_circuits[None]
     if len(transpiled_circuits.shape) > 1:
         nqubits = 0
         for circ_arr in transpiled_circuits:
@@ -1125,6 +1146,8 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
     if verbose: print("\rLoading jobs...".ljust(100), end="")
     jobs_layout = []
     jobs_db_json = job_db.search_by_params(options, ran_circuits.flatten().tolist(), "Sampler", strict_depth=False, limit=job_index+1)
+    if job_index != 0:
+        jobs_db_json = jobs_db_json[job_index]
     if not jobs_db_json:
         raise ValueError("No jobs found with the provided settings")
     job_ids = [jobs_json["job_id"] for jobs_json in jobs_db_json["jobs"]]
@@ -1166,10 +1189,7 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
                         pass
                     except TypeError:
                         pass
-                    try:
-                        odr_samples_dict = dodrjob.data.c.get_counts()
-                    except AttributeError:
-                        odr_samples_dict = dodrjob.data.measure.get_counts()
+                    odr_samples_dict = list(dict(dodrjob.data).values())[0].get_counts()
                 else:
                     odr_samples_dict = {}
                 this_layout_samples_dicts.append(odr_samples_dict)
@@ -1188,10 +1208,7 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
                     pass
                 except TypeError:
                     pass
-                try:
-                    real_samples_dict = drealjob.data.c.get_counts()
-                except AttributeError:
-                    real_samples_dict = drealjob.data.measure.get_counts()
+                real_samples_dict = list(dict(drealjob.data).values())[0].get_counts()
             else:
                 real_samples_dict = {}
             this_layout_samples_dicts.append(real_samples_dict)
@@ -1203,18 +1220,23 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
         real_samples_dicts = multiprocess_nrepetitions_combine_samples_dicts(real_samples_dicts, transpiled_circuits.shape, nrepetitions)
 
     # Convert the samples dicts into logical samples dicts
-    if verbose: print("\rConverting samples to logical samples...".ljust(100), end="")
-    real_samples_dicts = multiprocess_get_logical_samples_dicts(real_samples_dicts, jobs_layout[:, real_samples_dicts.shape[1]:])
-    if odr_circuits is not None:
-        odr_samples_dicts = multiprocess_get_logical_samples_dicts(odr_samples_dicts, jobs_layout[:, :real_samples_dicts.shape[1]])
+    # if verbose: print("\rConverting samples to logical samples...".ljust(100), end="")
+    # real_samples_dicts = multiprocess_get_logical_samples_dicts(real_samples_dicts, jobs_layout[:, real_samples_dicts.shape[1]:2*real_samples_dicts.shape[1]])
+    # if odr_circuits is not None:
+    #     odr_samples_dicts = multiprocess_get_logical_samples_dicts(odr_samples_dicts, jobs_layout[:, :real_samples_dicts.shape[1]])
 
     # Generate postselected samples dicts
     if verbose: print("\rGenerating postselected samples...".ljust(100), end="")
-    if not recovery:
+    if recovery is None:
+        pass
+    elif not recovery:
         flip_threshold = 0
-    postselected_real_samples_dicts = multiprocess_get_postselected_recovered_samples_dicts(real_samples_dicts, postselection_ops, flip_threshold)
+        recovery = None
+    elif recovery == True:
+        recovery = None
+    postselected_real_samples_dicts = multiprocess_get_postselected_recovered_samples_dicts(real_samples_dicts, postselection_ops, flip_threshold, recovery_function=recovery)
     if odr_circuits is not None:
-        postselected_odr_samples_dicts = multiprocess_get_postselected_recovered_samples_dicts(odr_samples_dicts, postselection_ops, flip_threshold)
+        postselected_odr_samples_dicts = multiprocess_get_postselected_recovered_samples_dicts(odr_samples_dicts, postselection_ops, flip_threshold, recovery_function=recovery)
 
     # Combine samples dicts from different layouts
     combined_real_samples_dicts = multiprocess_layouts_combine_samples_dicts(real_samples_dicts)
@@ -1239,7 +1261,7 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
         raise NotImplementedError("Non-diagonal observables not yet supported")
 
     # Return
-    if verbose: print(f"Loaded {len(jobs_layout.flatten())} jobs")
+    if verbose: print(f"\rLoaded {len(real_samples_dicts.flatten())*nrepetitions} jobs".ljust(100))
     if odr_circuits is None:
         to_return = [[real_expectation_values, raw_expectation_values]]
         if confidence is not None:
