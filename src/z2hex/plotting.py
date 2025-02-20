@@ -121,17 +121,45 @@ def local_obs_anim(site_gauge_observable_matrix, lattice, step_to_title_function
     subprocess.run(["ffmpeg", "-framerate", str(fps), "-i", os.path.join(frames_folder_path, f"{anim_name}_%0{filepath_digits}d.png"), "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", filepath])
     shutil.rmtree(frames_folder_path)
 
-def plot_configuration_sample_ration(lattice, logical_samples_dict, configurations, colors=None, labels=None, filepath=""):
-    configurations = np.array(configurations)
-    if colors is not None:
+def plot_configuration_sample_ratio(lattice, logical_samples_dicts, configurations, cmap=None, x_ticks=None, x_label=None, y_ticks=None, ylabel=None, markers=None, funclabels=None, title="", legend=False, filepath=""):
+    if cmap is not None:
         cmap = plt.get_cmap("Set2")
-        colors = [cmap(i % 8) for i in range(len(configurations))]
-    if labels is None:
-        labels = [f"Conf. {i}" for i in range(len(configurations))]
+
     plt.rc("text", usetex=True)
     plt.rc("font", size=20, family="serif", weight="bold")
+
+    configuration_dynamics = np.zeros((len(logical_samples_dicts), len(configurations)))
     for config in configurations:
-        config_string = "".join(["0" if i in config else "1" for i in range(len(lattice))])[::-1]
-        config_ratio_dynamics = np.zeros(len(logical_samples_dict))
-        for time_samples in logical_samples_dict:
-            config_ratio_dynamics[time_samples.time] = time_samples[config_string] / sum(time_samples.values())
+        config_string = "".join(["1" if i in config else "0" for i in range(len(lattice))][::-1])
+        config_ratio_dynamics = np.zeros(len(logical_samples_dicts))
+        for i, time_samples in enumerate(logical_samples_dicts):
+            config_ratio_dynamics[i] = time_samples.get(config_string, 0) / sum(time_samples.values())
+        configuration_dynamics[:, configurations.index(config)] = config_ratio_dynamics
+    
+    fig, ax = plt.subplots(figsize=[9, 6])
+    if x_ticks is not None:
+        if len(x_ticks.shape) == 1:
+            plt.xticks(x_ticks)
+        else:
+            plt.xticks(*x_ticks)
+        x = np.linspace(x_ticks[0], x_ticks[-1], configuration_dynamics.shape[0])
+    else:
+        x = np.arange(configuration_dynamics.shape[0])
+    if funclabels is None:
+        funclabels = [f"Conf. {i}" for i in range(len(configurations))]    
+    for i in range(len(configurations)):
+        color = cmap(i % 8)
+        plt.plot(x, configuration_dynamics[:, i], marker=markers[i] if markers is not None else "o", markersize=10, markeredgecolor="black", color=color, label=funclabels[i])
+    plt.xlabel(x_label)
+    plt.ylabel(ylabel, labelpad=10)
+    if y_ticks is not None:
+        plt.yticks(y_ticks)
+    plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
+    if legend: plt.legend(loc="best", fontsize=16)
+    if title:
+        plt.title(title, pad=10)
+    plt.tight_layout()
+    if filepath:
+        plt.savefig(filepath, dpi=300, facecolor="none")
+    plt.show()
+    plt.rcdefaults()
