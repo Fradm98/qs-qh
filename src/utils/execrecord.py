@@ -22,7 +22,7 @@ class ExecutionRecord:
             np.array(J).tolist(), 
             np.array(h).tolist(), 
             np.array(lamb).tolist(), 
-            float(g), 
+            str(g), 
             float(final_time), 
             float(dt), 
             int(steps), 

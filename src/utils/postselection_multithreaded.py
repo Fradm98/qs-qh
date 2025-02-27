@@ -730,7 +730,7 @@ def execute_postselected_sampler_batch(backend, sampler_opt_dict, transpiled_cir
         job_objs.append(this_jobs)
     job_objs = np.array(job_objs)
 
-    # batch.close()
+    batch.close()
 
     # Diagonalize each non-diagonal observable and send a batch of jobs to avoid long circuits
     for observable in non_diagonal_observables:
@@ -1098,7 +1098,7 @@ def multiprocess_measure_diagonal_observables(samples_dicts, diagonal_observable
         expectation_values = np.array(result).reshape((*og_samples_dicts_shape, len(diagonal_observables)))
         return expectation_values
 
-def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_circuits, postselect_generating_func, observable_generating_funcs, extra_options=None, job_index=0, recovery=True, flip_threshold=None, jobs_result_folder="", confidence=None, return_samples_dicts=False, return_postselected_samples_dicts=False, return_layouts=False, odr_circuits=None, max_shots=75000, verbose=False):
+def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_circuits, postselect_generating_func, observable_generating_funcs, extra_options=None, job_index=0, recovery=True, flip_threshold=None, jobs_result_folder="", confidence=None, return_samples_dicts=False, return_postselected_samples_dicts=False, return_layouts=False, odr_circuits=None, postselect_odr=True, max_shots=75000, verbose=False):
     # Preparation    
     transpiled_circuits = numpy_array_of_circuits(transpiled_circuits)
     if len(transpiled_circuits.shape) < 2:
@@ -1236,7 +1236,10 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
         recovery = None
     postselected_real_samples_dicts = multiprocess_get_postselected_recovered_samples_dicts(real_samples_dicts, postselection_ops, flip_threshold, recovery_function=recovery)
     if odr_circuits is not None:
-        postselected_odr_samples_dicts = multiprocess_get_postselected_recovered_samples_dicts(odr_samples_dicts, postselection_ops, flip_threshold, recovery_function=recovery)
+        if postselect_odr:
+            postselected_odr_samples_dicts = multiprocess_get_postselected_recovered_samples_dicts(odr_samples_dicts, postselection_ops, flip_threshold, recovery_function=recovery)
+        else:
+            postselected_odr_samples_dicts = odr_samples_dicts
 
     # Combine samples dicts from different layouts
     combined_real_samples_dicts = multiprocess_layouts_combine_samples_dicts(real_samples_dicts)
@@ -1261,7 +1264,7 @@ def load_postselected_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_ci
         raise NotImplementedError("Non-diagonal observables not yet supported")
 
     # Return
-    if verbose: print(f"\rLoaded {len(real_samples_dicts.flatten())*nrepetitions} jobs".ljust(100))
+    if verbose: print(f"\rLoaded {len(jobs.flatten())} jobs".ljust(100))
     if odr_circuits is None:
         to_return = [[real_expectation_values, raw_expectation_values]]
         if confidence is not None:
