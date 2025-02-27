@@ -87,13 +87,20 @@ def particle_pair_initial_state(left_particle_position, chain_length):
     state[index] = 1
     return state
 
+def singlep_initial_state(particle_position, chain_length):
+    nqubits = 2*chain_length - 1
+    state = np.zeros(2**nqubits)
+    index = 2**(nqubits - 2*particle_position - 1) + np.sum(2**(nqubits - 2*particle_position - 2 - 2*np.arange(chain_length//2))) 
+    state[index] = 1
+    return state
+
 def dual_particle_pair_initial_state(left_particle_position, chain_length):
     nqubits = chain_length - 1
     state = np.zeros(2**nqubits)
     state[2**(nqubits - left_particle_position - 1)] = 1
     return state
 
-def particle_pair_quench_simulation(L, J, h, lamb, particle_pair_left_position, final_time, steps, filepath="", overwrite=False, print_mode=False):    
+def particle_pair_quench_simulation(L, J, h, lamb, particle_pair_left_position, dt, steps, filepath="", overwrite=False, print_mode=False):    
     if os.path.exists(filepath) and not overwrite:
         return np.loadtxt(filepath)
     
@@ -101,22 +108,51 @@ def particle_pair_quench_simulation(L, J, h, lamb, particle_pair_left_position, 
     if print_mode: print("\rCreating site occupation operators...".ljust(50), end="")
     occupation_operators = [sparse_qubit_occupation_operator(i, L) for i in range(2*L - 1)]
     if print_mode: print("\rCreating propagator...".ljust(50), end="")
-    base_propagator = sparse_propagator(J, h, lamb, L, final_time/steps)
+    base_propagator = sparse_propagator(J, h, lamb, L, dt)
 
     site_gauge_occupation_matrix = np.zeros((steps + 1, 2*L-1))
     current_state = initial_state.copy()
     for i in range(steps + 1):
         if print_mode:
-            t = i*steps/final_time 
-            print(f"\rt = {t:.04f} / t_f = {final_time:.04f}".ljust(50), end="")
+            t = dt*i
+            print(f"\rt = {t:.04f}".ljust(50), end="")
         this_qubits_occupation = np.array([expectation(current_state, socc_op).real for socc_op in occupation_operators])
         site_gauge_occupation_matrix[i] = this_qubits_occupation
         current_state = base_propagator @ current_state
 
     if filepath:
-        header = f"L = {L} / J = {J} / lamb = {lamb}\nparticle_position = {particle_pair_left_position}\nfinal_time = {final_time} / steps = {steps}"
+        header = f"L = {L} / J = {J} / lamb = {lamb}\nparticle_position = {particle_pair_left_position}\nfinal_time = {dt*steps:.04f} / steps = {steps}"
         np.savetxt(filepath, site_gauge_occupation_matrix, header=header)
     
+    return site_gauge_occupation_matrix
+
+def singlep_quench_simulation(L, J, h, lamb, particle_position, dt, steps, filepath="", overwrite=False, print_mode=False):
+    if os.path.exists(filepath) and not overwrite:
+        return np.loadtxt(filepath)
+
+    initial_state = singlep_initial_state(particle_position, L)
+    if print_mode: print("\rCreating occupation operators...".ljust(50), end="")
+    occupation_operators = [sparse_qubit_occupation_operator(i, L) for i in range(2*L - 1)]
+    if print_mode: print("\rCreating propagator...".ljust(50), end="")
+    base_propagator = sparse_propagator(J, h, lamb, L, dt)
+
+    site_gauge_occupation_matrix = np.zeros((steps + 1, 2*L-1))
+    current_state = initial_state.copy()
+    for i in range(steps + 1):
+        if print_mode:
+            t = dt*i
+            print(f"\rt = {t:.04f}".ljust(50), end="")
+        this_qubits_occupation = np.array([expectation(current_state, socc_op).real for socc_op in occupation_operators])
+        site_gauge_occupation_matrix[i] = this_qubits_occupation
+        current_state = base_propagator @ current_state
+
+    if filepath:
+        extension = os.path.splitext(filepath)[1]
+        if extension == ".npy":
+            np.save(filepath, site_gauge_occupation_matrix)
+        else:
+            header = f"L = {L} / J = {J} / lamb = {lamb}\nparticle_position = {particle_position}\nfinal_time = {dt*steps:.04f} / steps = {steps}"
+            np.savetxt(filepath, site_gauge_occupation_matrix, header=header)
     return site_gauge_occupation_matrix
 
 def trotter_particle_pair_quench_simulation(L, J, h, lamb, particle_pair_left_position, final_time, layers, measure_every_layers=1, filepath="", overwrite=False, print_mode=False):
