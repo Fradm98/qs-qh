@@ -430,3 +430,49 @@ def plot_discarded_samples(samples_dicts, postselection_operators, flip_threshol
         plt.savefig(filepath, dpi=300, facecolor="none")
     plt.show()
     plt.rcdefaults()
+
+def plot_mean_deviations(observable_matrices_1, observable_matrices_2, x_ticks=None, x_label=None, y_lim=None, labels=None, cmap=None, title="", filepath=None):
+    observable_matrices_1 = np.array(observable_matrices_1)
+    observable_matrices_2 = np.array(observable_matrices_2)
+
+    if observable_matrices_1.shape != observable_matrices_2.shape:
+        raise ValueError("Observable matrices must have the same shape")
+    
+    if len(observable_matrices_1.shape) == 2:
+        observable_matrices_1 = observable_matrices_1[None]
+        observable_matrices_2 = observable_matrices_2[None]
+
+    if labels is not None:
+        if len(labels) != observable_matrices_1.shape[0]:
+            raise ValueError("labels must have the same length as number of observable")
+    else:
+        labels = [f"Params ${i}$" for i in range(observable_matrices_1.shape[0])]
+    
+    plt.rc("text", usetex=True)
+    plt.rc("font", size=20, family="serif", weight="bold")
+    if cmap is None:
+        cmap = plt.get_cmap("Set2")
+    
+    mean_deviations = np.nanmean(np.abs(observable_matrices_1 - observable_matrices_2), axis=-1)
+    x = np.arange(mean_deviations.shape[1])
+
+    fig, ax = plt.subplots(figsize=[9, 6])
+    for i, mean_deviation in enumerate(mean_deviations):
+        color = cmap((i % 8)/8 + 0.01)
+        plt.plot(x, mean_deviation, "o--", markersize=12, markeredgecolor="black", color=color, label=labels[i])
+    if x_ticks is not None:
+        plt.xticks(*x_ticks)
+    if x_label is not None:
+        plt.xlabel(x_label)
+    if y_lim is not None:
+        plt.ylim(y_lim)
+    plt.ylabel(r"$| \langle O \rangle_1 - \langle O \rangle_2 |$", labelpad=10)
+    if title:
+        plt.title(title)
+    plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
+    plt.tight_layout()
+    plt.legend(loc="best", fontsize=12)
+    if filepath:
+        plt.savefig(filepath, dpi=300, facecolor="none")
+    plt.show()
+    plt.rcdefaults()
