@@ -7,6 +7,7 @@ from utils.paulis import PauliTensor, PauliTensorSum, commutator
 from qiskit.circuit import QuantumCircuit, Parameter
 from utils.hexec import backends_objs_to_names
 from sympy.physics.paulialgebra import Pauli
+from multiprocessing import Pool, cpu_count
 from utils.circs import remove_idle_qwires
 from sympy.core.numbers import One
 import numpy as np
@@ -91,7 +92,7 @@ class TotalInteractionPropagator(QuantumCircuit):
                             self.cx(lattice.edges[ec].qubit, v.qubit)
 
 class TotalInteractionPropagatorDD(QuantumCircuit):
-    def __init__(self, lattice, lambdas, g, t, x_basis=False):
+    def __init__(self, lattice, lambdas, t_g, t, x_basis=False):
         super().__init__(len(lattice))
         lambdas = np.array(lambdas)
         if len(lambdas.shape) > 1:
@@ -103,21 +104,28 @@ class TotalInteractionPropagatorDD(QuantumCircuit):
             lambdas = np.repeat(lambdas, len(lattice.edge_coords))
         gauge_qubits = [link.qubit for link in lattice.edges.values()]
         matter_qubits = [node.qubit for node in lattice.vertices.values()]
+        t_g = np.array(t_g)
+        if t_g.ndim == 0:
+            t_g = np.full(len(matter_qubits), t_g)
+        elif t_g.ndim > 1:
+            raise ValueError(f"t_g should be a scalar or an array of shape ({len(matter_qubits)},)")
+        elif t_g.shape[0] != len(matter_qubits):
+            raise ValueError(f"t_g should be a scalar or an array of shape ({len(matter_qubits)},)")
         schedule = [(0,-0.5),(-0.5,0),(0,0.5)]
         schedule_downwards = [(0.5,0),(0,-0.5),(0,0.5)]
-        random_times = np.random.uniform(0, t*g, len(matter_qubits))
+        # random_times = np.random.uniform(0, t*g, len(matter_qubits))
         for i in range(7):
             if i == 3:
                 if x_basis:
                     for i, gqb in enumerate(gauge_qubits):
                         self.rz(-2*t*lambdas[i], gqb)
                     for i, qind in enumerate(matter_qubits):
-                        self.rx(-2*random_times[i], qind)
+                        self.rx(-2*t_g[i], qind)
                 else:
                     for i, gqb in enumerate(gauge_qubits):
                         self.rx(-2*t*lambdas[i], gqb)
                     for i, qind in enumerate(matter_qubits):
-                        self.rz(-2*random_times[i], qind)
+                        self.rz(-2*t_g[i], qind)
             else:
                 typ = 6-i if i > 3 else i
                 for v in lattice.vertices.values():
@@ -227,7 +235,23 @@ def get_layouts(lattice, backend, layout_first_or_all=None, forbidden_qubits=[])
                 to_return.append(layout)
         return to_return
     
-def string_quench_simulation_circuits_dt(lattice, Js, hs, lambdas, string_qubits, final_time, dt, steps, backend, optimization_level, g=None, layouts=None, x_basis=False, force_even=True, barriers=False):
+def logical_string_quench_simulation_circuit(lattice, Js, hs, lambdas, string_qubits, dt, nlayers, g_func=None, x_basis=False, barriers=False):
+    if callable(g_func):
+        g = [g_func(lattice, dt, k) for k in range(nlayers)]
+    elif g_func is not None:
+        g = g_func
+    else:
+        g = None
+    this_trotter_layers = []
+    for k in range(nlayers):
+        this_trotter_layers.append(SecondOrderTrotter(lattice, Js, hs, lambdas, dt, 1, g=g[k] if g is not None else g, x_basis=x_basis, barriers=barriers))
+    this_time_logical_circ = StringInitialStateCirc(lattice, string_qubits, x_basis)
+    for trotter_layer in this_trotter_layers:
+        this_time_logical_circ = this_time_logical_circ.compose(trotter_layer).decompose()
+    this_time_logical_circ.measure_all()
+    return this_time_logical_circ
+    
+def string_quench_simulation_circuits_dt(lattice, Js, hs, lambdas, string_qubits, final_time, dt, steps, backend, optimization_level, g_func=None, layouts=None, x_basis=False, force_even=True, barriers=False):
     Js = np.array(Js)
     hs = np.array(hs)
     lambdas = np.array(lambdas)
@@ -252,10 +276,11 @@ def string_quench_simulation_circuits_dt(lattice, Js, hs, lambdas, string_qubits
     except AttributeError:
         fractional_gates = False
     t_arr = np.linspace(0, final_time, steps+1)
-    nlayers_arr = (t_arr // dt + 1).astype(int)
+    nlayers_arr = (t_arr // dt).astype(int)[1:]
+    nlayers_arr[np.equal(nlayers_arr, 0)] = 1
     if force_even:
         nlayers_arr[~np.equal(nlayers_arr % 2, 0)] += 1
-    dt_arr = t_arr / nlayers_arr
+    dt_arr = t_arr[1:] / nlayers_arr
     state_preparation_logical_circ = StringInitialStateCirc(lattice, string_qubits, x_basis)
     measured_state_preparation_logical_circ = state_preparation_logical_circ.copy()
     measured_state_preparation_logical_circ.measure_all()
@@ -263,21 +288,40 @@ def string_quench_simulation_circuits_dt(lattice, Js, hs, lambdas, string_qubits
     for layout in layouts:
         layout = np.array(layout)
         trotter_pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=layout)
-        state_preparation_physical_circ = trotter_pm.run(measured_state_preparation_logical_circ)
-        if fractional_gates:
-            state_preparation_physical_circ = sched_pm.run(state_preparation_physical_circ)
-        this_layout_circs = [state_preparation_physical_circ]
-        for i in range(steps):
-            this_trotter_layer_logical_circuit = SecondOrderTrotter(lattice, Js[i], hs[i], lambdas[i], dt_arr[i+1], 1, g=g, x_basis=x_basis, barriers=barriers)
-            this_logical_circuit = state_preparation_logical_circ.compose(this_trotter_layer_logical_circuit.repeat(nlayers_arr[i+1])).decompose()
-            this_physical_circuit = trotter_pm.run(this_logical_circuit)
-            if fractional_gates:
-                this_physical_circuit = sched_pm.run(this_physical_circuit)
-            this_layout_circs.append(this_physical_circuit)
-        circs_to_return.append(this_layout_circs)
+        this_layout_logical_circs = [measured_state_preparation_logical_circ]
+        with Pool(processes=cpu_count()) as pool:
+            evolved_circuits = pool.starmap(logical_string_quench_simulation_circuit, [(lattice, Js[i], hs[i], lambdas[i], string_qubits, dt_arr[i], nlayers_arr[i], g_func, x_basis, barriers) for i in range(steps)])
+        this_layout_logical_circs += evolved_circuits
+        this_layout_physical_circs = trotter_pm.run(this_layout_logical_circs)
+        circs_to_return.append(this_layout_physical_circs)
     return circs_to_return
 
-def odr_compuncomp_circuits_dt(lattice, Js, hs, lambdas, final_time, dt, steps, backend, optimization_level, g=None, string_qubits=None, layouts=None, x_basis=False, barriers=False):
+def logical_odr_compuncomp_circuit(lattice, Js, hs, lambdas, dt, nlayers, g_func=None, string_qubits=None, x_basis=False, barriers=False):
+    if callable(g_func):
+        g = [g_func(lattice, dt, k) for k in range(nlayers)]
+    elif g_func is not None:
+        g = g_func
+    else:
+        g = None
+    if string_qubits is not None:
+        state_preparation_logical_circ = StringInitialStateCirc(lattice, string_qubits, x_basis)
+    else:
+        state_preparation_logical_circ = QuantumCircuit(len(lattice))
+    this_forwards_trotter_layers = []
+    this_backwards_trotter_layers = []
+    for k in range(nlayers//2):
+        this_forwards_trotter_layers.append(SecondOrderTrotter(lattice, Js, hs, lambdas, dt, 1, g=g[k] if g is not None else g, x_basis=x_basis, barriers=barriers))
+        this_backwards_trotter_layers.append(this_forwards_trotter_layers[-1].inverse())
+    this_time_logical_circ = state_preparation_logical_circ.copy()
+    for forwards_trotter_layer in this_forwards_trotter_layers:
+        this_time_logical_circ = this_time_logical_circ.compose(forwards_trotter_layer).decompose()
+    this_time_logical_circ.barrier()
+    for backwards_trotter_layer in reversed(this_backwards_trotter_layers):
+        this_time_logical_circ = this_time_logical_circ.compose(backwards_trotter_layer).decompose()
+    this_time_logical_circ.measure_all()
+    return this_time_logical_circ
+
+def odr_compuncomp_circuits_dt(lattice, Js, hs, lambdas, final_time, dt, steps, backend, optimization_level, g_func=None, string_qubits=None, layouts=None, x_basis=False, barriers=False):
     Js = np.array(Js)
     hs = np.array(hs)
     lambdas = np.array(lambdas)
@@ -296,50 +340,34 @@ def odr_compuncomp_circuits_dt(lattice, Js, hs, lambdas, final_time, dt, steps, 
             raise ValueError("The number of rows in the Js, hs and lambdas parameters must be equal to the number of steps")
     else:
         raise ValueError("The parameters Js, hs and lambdas must be scalars, vectors or matrices")
-    try:
-        if (fractional_gates := backend.options.use_fractional_gates):
-            sched_pm = PassManager([ALAPScheduleAnalysis(backend.instruction_durations), PadDelay(backend.instruction_durations)])
-    except AttributeError:
-        fractional_gates = False
     t_arr = np.linspace(0, final_time, steps+1)
-    nlayers_arr = (t_arr // dt + 1).astype(int)
+    nlayers_arr = (t_arr // dt).astype(int)[1:]
+    nlayers_arr[np.equal(nlayers_arr, 0)] = 1
     nlayers_arr[~np.equal(nlayers_arr % 2, 0)] += 1
-    dt_arr = t_arr / nlayers_arr
+    dt_arr = t_arr[1:] / nlayers_arr
     if string_qubits is not None:
         state_preparation_logical_circ = StringInitialStateCirc(lattice, string_qubits, x_basis)
     else:
         state_preparation_logical_circ = QuantumCircuit(len(lattice))
-    first_circuit = QuantumCircuit(len(lattice))
-    measured_first_circuit = first_circuit.copy()
-    measured_first_circuit.measure_all()
+    measured_state_preparation_logical_circ = state_preparation_logical_circ.copy()
+    measured_state_preparation_logical_circ.measure_all()
     circs_to_return = []
     for layout in layouts:
         layout = np.array(layout)
         trotter_pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=layout)
-        state_preparation_physical_circ = trotter_pm.run(measured_first_circuit)
-        if fractional_gates:
-            state_preparation_physical_circ = sched_pm.run(state_preparation_physical_circ)
-        this_layout_circs = [state_preparation_physical_circ]
-        for i in range(steps):
-            this_forward_trotter_layer_logical_circuit = SecondOrderTrotter(lattice, Js[i], hs[i], lambdas[i], dt_arr[i+1], 1, g=g, x_basis=x_basis, barriers=barriers)
-            this_backwards_trotter_layer_logical_circuit = this_forward_trotter_layer_logical_circuit.inverse()
-            this_time_logical_circ = state_preparation_logical_circ.compose(this_forward_trotter_layer_logical_circuit.repeat(nlayers_arr[i+1]//2)).decompose()
-            this_time_logical_circ.barrier()
-            this_time_logical_circ = this_time_logical_circ.compose(this_backwards_trotter_layer_logical_circuit.repeat(nlayers_arr[i+1]//2)).decompose()
-            this_time_logical_circ = this_time_logical_circ.compose(state_preparation_logical_circ).decompose()
-            this_time_logical_circ.measure_all()
-            this_time_physical_circ = trotter_pm.run(this_time_logical_circ)
-            if fractional_gates:
-                this_time_physical_circ = sched_pm.run(this_time_physical_circ)
-            this_layout_circs.append(this_time_physical_circ)
-        circs_to_return.append(this_layout_circs)
+        this_layout_logical_circs = [measured_state_preparation_logical_circ]
+        with Pool(processes=cpu_count()) as pool:
+            evolved_circuits = pool.starmap(logical_odr_compuncomp_circuit, [(lattice, Js[i], hs[i], lambdas[i], dt_arr[i], nlayers_arr[i], g_func, string_qubits, x_basis, barriers) for i in range(steps)])
+        this_layout_logical_circs += evolved_circuits
+        this_layout_physical_circs = trotter_pm.run(this_layout_logical_circs)
+        circs_to_return.append(this_layout_physical_circs)
     return circs_to_return
 
-def simulation_and_odr_circuits(lattice, Js, hs, lambdas, string_qubits, final_time, dt, steps, backend, optimization_level, g=None, layouts=None, x_basis=False, force_even=True, barriers=False):
+def simulation_and_odr_circuits(lattice, Js, hs, lambdas, string_qubits, final_time, dt, steps, backend, optimization_level, g_func=None, layouts=None, x_basis=False, force_even=True, barriers=False):
     seed = np.random.randint(100000)
     np.random.seed(seed)
-    simulation_circuits = string_quench_simulation_circuits_dt(lattice, Js, hs, lambdas, string_qubits, final_time, dt, steps, backend, optimization_level, g, layouts, x_basis, force_even, barriers)
+    simulation_circuits = string_quench_simulation_circuits_dt(lattice, Js, hs, lambdas, string_qubits, final_time, dt, steps, backend, optimization_level, g_func, layouts, x_basis, force_even, barriers)
     np.random.seed(seed)
-    odr_circuits = odr_compuncomp_circuits_dt(lattice, Js, hs, lambdas, final_time, dt, steps, backend, optimization_level, g, string_qubits, layouts, x_basis, barriers)
+    odr_circuits = odr_compuncomp_circuits_dt(lattice, Js, hs, lambdas, final_time, dt, steps, backend, optimization_level, g_func, None, layouts, x_basis, barriers)
     np.random.seed()
     return simulation_circuits, odr_circuits
