@@ -181,28 +181,78 @@ module Z2HiggsChainDynamics
         base_trotter_layer = trotter_layer(sites, J, h, λ, dt, x_basis=x_basis)
 
         # Time evolution
-        site_gauge_observable_matrix = zeros(Float64, (steps ÷ plot_each + 1, length(observables)))
+        site_gauge_observable_matrix = zeros(Float64, (steps + 1, length(observables)))
         ψ = ψ0
         for i in 0:steps
             this_time = i * dt
             print("\rt = $this_time")
-            if i % plot_each == 0 || i == steps
-                for (j, observable) in pairs(observables)
-                    site_gauge_observable_matrix[(i÷plot_each)+1, j] = real(inner(ψ', observable, ψ))
-                end
+            for (j, observable) in pairs(observables)
+                site_gauge_observable_matrix[i+1, j] = real(inner(ψ', observable, ψ))
             end
             if i !== steps
                 ψ = apply(base_trotter_layer, ψ; cutoff=cutoff)
             end
         end
 
-        print("t = $final_time")
+        print("\n")
 
         if filepath !== nothing
             npzwrite(filepath, site_gauge_observable_matrix)
         end
 
         return site_gauge_observable_matrix
+    end
+
+    function particle_pair_quench_simulation(sites::Sites, observables::Vector{MPO}, J::Real, h::Real, λ::Real, particle_pair_left_position::Int, particle_pair_length::Int, final_time::Real, dt::Real, steps::Int, x_basis::Bool=false, force_even::Bool=false, cutoff=1e-13, filepath::Union{String, Nothing}=nothing)
+        if length(sites) < 2
+            throw(ArgumentError("chain_length must be ≥ 2"))
+        end
+
+        if filepath !== nothing
+            if isfile(filepath)
+                site_gauge_observable_matrix = npzread(filepath)
+                return site_gauge_observable_matrix
+            end
+        end
+
+        # Initial state
+        initial_state_string = ["Up" for i in 1:length(sites)]
+        initial_state_string[2*particle_pair_left_position+1] = "Dn"
+        initial_state_string[2*particle_pair_left_position+2:2:2*particle_pair_left_position+1+2*particle_pair_length] .= "Dn"
+        initial_state_string[2*particle_pair_left_position+1+2*particle_pair_length] = "Dn"
+        ψ0 = MPS(sites, initial_state_string)
+
+        t_arr = LinRange(0, final_time, steps+1)
+        nlayers_arr = (t_arr .÷ dt)[2:end]
+        nlayers_arr[nlayers_arr .== 0] .= 1
+        if force_even
+            nlayers_arr[(nlayers_arr .% 2) .== 1] .+= 1
+        end
+        dt_arr = t_arr[2:end] ./ nlayers_arr
+        site_gauge_observable_matrix = zeros(Float64, (steps + 1, length(observables)))
+        for (j, observable) in pairs(observables)
+            site_gauge_observable_matrix[1, j] = real(inner(ψ0', observable, ψ0))
+        end
+        for i in 1:steps
+            print("\rStep $i")
+            base_propagator = trotter_layer(sites, J, h, λ, dt_arr[i], x_basis=x_basis)
+            ψ = ψ0
+            for j in 1:nlayers_arr[i]
+                ψ = apply(base_propagator, ψ; cutoff=cutoff)
+            end
+            for (j, observable) in pairs(observables)
+                site_gauge_observable_matrix[i+1, j] = real(inner(ψ', observable, ψ))
+            end
+        end
+
+        print("\n")
+
+        if filepath !== nothing
+            npzwrite(filepath, site_gauge_observable_matrix)
+        end
+
+        return site_gauge_observable_matrix
+
     end
 end
 
