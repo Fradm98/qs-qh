@@ -223,14 +223,14 @@ def error_trotter2_ana(t, nlayers, chain_length, J, h, lamb):
 
 def logical_string_quench_simulation_circuit(chain_length, J, h, lamb, dt, nlayers, backend, optimization_level, g_func=None, particle_pair_left_position=None, particle_pair_length=None, x_basis=False, barriers=False, measure=True):
     if callable(g_func):
-        g = [g_func(chain_length, dt, k) for k in range(nlayers)]
+        g = g_func(chain_length, nlayers)
     elif g_func is not None:
         g = g_func
     else:
         g = None
     this_trotter_layers = []
     for k in range(nlayers):
-        this_trotter_layers.append(SecondOrderTrotter(chain_length, J, h, lamb, dt, 1, g=g[k] if g is not None else g, x_basis=x_basis, barriers=barriers))
+        this_trotter_layers.append(SecondOrderTrotter(chain_length, J, h, lamb, dt, 1, g=g[:, k] if g is not None else g, x_basis=x_basis, barriers=barriers))
     if particle_pair_left_position is not None and particle_pair_length is not None:
         this_time_logical_circ = particle_pair_initial_state(chain_length, particle_pair_left_position, particle_pair_length, x_basis=x_basis)
     else:
@@ -263,7 +263,7 @@ def string_quench_simulation_circuits_dt(chain_length, J, h, lamb, final_time, d
 
 def logical_string_quench_odr_circuit(chain_length, J, h, lamb, particle_pair_left_position, particle_pair_length, dt, nlayers, g_func=None, x_basis=False, barriers=False):
     if callable(g_func):
-        g = [g_func(chain_length, dt, k) for k in range(nlayers)]
+        g = g_func(chain_length, nlayers)
     elif g_func is not None:
         g = g_func
     else:
@@ -275,7 +275,7 @@ def logical_string_quench_odr_circuit(chain_length, J, h, lamb, particle_pair_le
     this_forwards_trotter_layers = []
     this_backwards_trotter_layers = []
     for k in range(nlayers//2):
-        this_forwards_trotter_layers.append(SecondOrderTrotter(chain_length, J, h, lamb, dt, 1, g=g[k] if g is not None else g, x_basis=x_basis, barriers=barriers))
+        this_forwards_trotter_layers.append(SecondOrderTrotter(chain_length, J, h, lamb, dt, 1, g=g[:, k] if g is not None else g, x_basis=x_basis, barriers=barriers))
         this_backwards_trotter_layers.append(this_forwards_trotter_layers[-1].inverse())
     this_time_logical_circ = state_preparation_logical_circ.copy()
     for forwards_trotter_layer in this_forwards_trotter_layers:
@@ -323,14 +323,14 @@ def string_quench_simulation_and_odr_circs(chain_length, J, h, lamb, final_time,
 
 def logical_singlep_quench_simulation_circuit(chain_length, J, h, lamb, particle_position, dt, nlayers, g_func=None, x_basis=False, barriers=False):
     if callable(g_func):
-        g = [g_func(chain_length, dt, k) for k in range(nlayers)]
+        g = g_func(chain_length, nlayers)
     elif g_func is not None:
         g = g_func
     else:
         g = None
     this_trotter_layers = []
     for k in range(nlayers):
-        this_trotter_layers.append(SecondOrderTrotter(chain_length, J, h, lamb, dt, 1, g=g[k] if g is not None else g, x_basis=x_basis, barriers=barriers))
+        this_trotter_layers.append(SecondOrderTrotter(chain_length, J, h, lamb, dt, 1, g=g[:, k] if g is not None else g, x_basis=x_basis, barriers=barriers))
     this_time_logical_circ = single_particle_initial_state(chain_length, particle_position, x_basis=x_basis)
     for this_trotter_layer in this_trotter_layers:
         this_time_logical_circ = this_time_logical_circ.compose(this_trotter_layer).decompose()
@@ -364,7 +364,7 @@ def singlep_quench_simulation_circuits_dt(chain_length, J, h, lamb, particle_pos
 
 def logical_singlep_quench_odr_compuncomp_circuit(chain_length, J, h, lamb, particle_position, dt, nlayers, g_func=None, x_basis=False, barriers=False):
     if callable(g_func):
-        g = [g_func(chain_length, dt, k) for k in range(nlayers)]
+        g = g_func(chain_length, nlayers)
     elif g_func is not None:
         g = g_func
     else:
@@ -376,7 +376,7 @@ def logical_singlep_quench_odr_compuncomp_circuit(chain_length, J, h, lamb, part
     this_forwards_trotter_layers = []
     this_backwards_trotter_layers = []
     for k in range(nlayers//2):
-        this_forwards_trotter_layers.append(SecondOrderTrotter(chain_length, J, h, lamb, dt, 1, g=g[k] if g is not None else g, x_basis=x_basis, barriers=barriers))
+        this_forwards_trotter_layers.append(SecondOrderTrotter(chain_length, J, h, lamb, dt, 1, g=g[:, k] if g is not None else g, x_basis=x_basis, barriers=barriers))
         this_backwards_trotter_layers.append(this_forwards_trotter_layers[-1].inverse())
     this_time_logical_circ = state_preparation_logical_circ.copy()
     for forwards_trotter_layer in this_forwards_trotter_layers:

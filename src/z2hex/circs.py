@@ -8,7 +8,6 @@ from qiskit.circuit import QuantumCircuit, Parameter
 from utils.hexec import backends_objs_to_names
 from sympy.physics.paulialgebra import Pauli
 from multiprocessing import Pool, cpu_count
-from utils.circs import remove_idle_qwires
 from sympy.core.numbers import One
 import numpy as np
 
@@ -237,14 +236,14 @@ def get_layouts(lattice, backend, layout_first_or_all=None, forbidden_qubits=[])
     
 def logical_string_quench_simulation_circuit(lattice, Js, hs, lambdas, string_qubits, dt, nlayers, g_func=None, x_basis=False, barriers=False):
     if callable(g_func):
-        g = [g_func(lattice, dt, k) for k in range(nlayers)]
+        g = g_func(lattice, nlayers)
     elif g_func is not None:
         g = g_func
     else:
         g = None
     this_trotter_layers = []
     for k in range(nlayers):
-        this_trotter_layers.append(SecondOrderTrotter(lattice, Js, hs, lambdas, dt, 1, g=g[k] if g is not None else g, x_basis=x_basis, barriers=barriers))
+        this_trotter_layers.append(SecondOrderTrotter(lattice, Js, hs, lambdas, dt, 1, g=g[:, k] if g is not None else g, x_basis=x_basis, barriers=barriers))
     this_time_logical_circ = StringInitialStateCirc(lattice, string_qubits, x_basis)
     for trotter_layer in this_trotter_layers:
         this_time_logical_circ = this_time_logical_circ.compose(trotter_layer).decompose()
@@ -298,7 +297,7 @@ def string_quench_simulation_circuits_dt(lattice, Js, hs, lambdas, string_qubits
 
 def logical_odr_compuncomp_circuit(lattice, Js, hs, lambdas, dt, nlayers, g_func=None, string_qubits=None, x_basis=False, barriers=False):
     if callable(g_func):
-        g = [g_func(lattice, dt, k) for k in range(nlayers)]
+        g = g_func(lattice, nlayers)
     elif g_func is not None:
         g = g_func
     else:
@@ -310,7 +309,7 @@ def logical_odr_compuncomp_circuit(lattice, Js, hs, lambdas, dt, nlayers, g_func
     this_forwards_trotter_layers = []
     this_backwards_trotter_layers = []
     for k in range(nlayers//2):
-        this_forwards_trotter_layers.append(SecondOrderTrotter(lattice, Js, hs, lambdas, dt, 1, g=g[k] if g is not None else g, x_basis=x_basis, barriers=barriers))
+        this_forwards_trotter_layers.append(SecondOrderTrotter(lattice, Js, hs, lambdas, dt, 1, g=g[:, k] if g is not None else g, x_basis=x_basis, barriers=barriers))
         this_backwards_trotter_layers.append(this_forwards_trotter_layers[-1].inverse())
     this_time_logical_circ = state_preparation_logical_circ.copy()
     for forwards_trotter_layer in this_forwards_trotter_layers:
