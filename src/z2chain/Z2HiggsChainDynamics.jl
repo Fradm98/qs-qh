@@ -2,7 +2,11 @@ module Z2HiggsChainDynamics
 
     export chain_sites, local_pauli_z, all_local_pauli_z, particle_pair_quench_simulation
 
+    include("../utils/MultiProductF.jl")
+
     using ITensors, ITensorMPS
+    using .MultiProductF
+    using Convex
     using NPZ
 
     Sites = Vector{Index{Int64}}
@@ -252,10 +256,152 @@ module Z2HiggsChainDynamics
         end
 
         return site_gauge_observable_matrix
-
     end
-end
 
-# sites = Z2HiggsChainDynamics.chain_sites(9)
-# observables = Z2HiggsChainDynamics.all_local_pauli_z(sites)
-# Z2HiggsChainDynamics.single_particle_quench_simulation(sites, observables, 1, 1.5, 2, )
+    function multiproduct_simulation_2order_single_t_first_try(sites::Sites, observables::Vector{MPO}, J::Real, h::Real, λ::Real, particle_pair_left_position::Int, particle_pair_length::Int, final_time::Real, multiproduct_lambda::Real, cutoff::Real=1e-13)
+        if length(sites) < 2
+            throw(ArgumentError("chain_length must be ≥ 2"))
+        end
+
+        # Constants for the simulation
+        ks = multiproduct_lambda .* [4, 13, 17]
+        c_ks = [0.016088, -1.794934, 2.778846]
+        # ks = multiproduct_lambda .* [8, 16, 32]
+
+        # Initial state
+        initial_state_string = ["Up" for i in 1:length(sites)]
+        initial_state_string[2*particle_pair_left_position+1] = "Dn"
+        initial_state_string[2*particle_pair_left_position+2:2:2*particle_pair_left_position+1+2*particle_pair_length] .= "Dn"
+        initial_state_string[2*particle_pair_left_position+1+2*particle_pair_length] = "Dn"
+        ψ0 = MPS(sites, initial_state_string)
+
+        site_gauge_observable_matrix = zeros(Float64, (length(observables), length(ks)))
+        for (i, k) in pairs(ks)
+            dt = final_time / k
+            base_propagator = trotter_layer(sites, J, h, λ, dt)
+            ψ = copy(ψ0)
+            for j in 1:k
+                ψ = apply(base_propagator, ψ; cutoff=cutoff)
+            end
+            for (j, observable) in pairs(observables)
+                site_gauge_observable_matrix[j, i] = real(inner(ψ', observable, ψ))
+            end
+        end
+
+        final_observables = zeros(Float64, length(observables))
+        for i in 1:length(observables)
+            # print(site_gauge_observable_matrix[i, :])
+            final_observables[i] = sum(c_ks .* site_gauge_observable_matrix[i, :])
+        end
+
+        return final_observables
+    end
+
+    function multiproduct_simulation_2order_first_try(sites::Sites, observables::Vector{MPO}, J::Real, h::Real, λ::Real, particle_pair_left_position::Int, particle_pair_length::Int, final_time::Real, steps::Int, multiproduct_lambda::Real, cutoff::Real=1e-13, filepath::Union{String, Nothing}=nothing)
+        if length(sites) < 2
+            throw(ArgumentError("chain_length must be ≥ 2"))
+        end
+
+        if filepath !== nothing
+            if isfile(filepath)
+                site_gauge_observable_matrix = npzread(filepath)
+                return site_gauge_observable_matrix
+            end
+        end
+
+        initial_state_string = ["Up" for i in 1:length(sites)]
+        initial_state_string[2*particle_pair_left_position+1] = "Dn"
+        initial_state_string[2*particle_pair_left_position+2:2:2*particle_pair_left_position+1+2*particle_pair_length] .= "Dn"
+        initial_state_string[2*particle_pair_left_position+1+2*particle_pair_length] = "Dn"
+        ψ0 = MPS(sites, initial_state_string)
+        
+        times_arr = LinRange(0, final_time, steps+1)
+        observables_matrix = zeros(Float64, (steps+1, length(observables)))
+        for (j, observable) in pairs(observables)
+            observables_matrix[1, j] = real(inner(ψ0', observable, ψ0))
+        end
+        for (i, t) in pairs(times_arr[2:end])
+            print("\rStep $i")
+            observables_matrix[i+1, :] = multiproduct_simulation_2order_single_t_first_try(sites, observables, J, h, λ, particle_pair_left_position, particle_pair_length, t, multiproduct_lambda, cutoff)
+        end
+
+        if filepath !== nothing
+            npzwrite(filepath, observables_matrix)
+        end
+
+        return observables_matrix
+    end
+
+    function multiproduct_particle_pair_simulation_2order_single_t(sites::Sites, observables::Vector{MPO}, J::Real, h::Real, λ::Real, particle_pair_left_position::Int, particle_pair_length::Int, time::Real, ks::Vector{Int}, c_ks::Vector{Float64}, cutoff::Real=1e-13)
+        if length(sites) < 2
+            throw(ArgumentError("chain_length must be ≥ 2"))
+        end
+
+        # Initial state
+        initial_state_string = ["Up" for i in 1:length(sites)]
+        initial_state_string[2*particle_pair_left_position+1] = "Dn"
+        initial_state_string[2*particle_pair_left_position+2:2:2*particle_pair_left_position+1+2*particle_pair_length] .= "Dn"
+        initial_state_string[2*particle_pair_left_position+1+2*particle_pair_length] = "Dn"
+        ψ0 = MPS(sites, initial_state_string)
+
+        site_gauge_observable_matrix = zeros(Float64, (length(observables), length(ks)))
+        for (i, k) in pairs(ks)
+            dt = time / k
+            base_propagator = trotter_layer(sites, J, h, λ, dt)
+            ψ = copy(ψ0)
+            for j in 1:k
+                ψ = apply(base_propagator, ψ; cutoff=cutoff)
+            end
+            for (j, observable) in pairs(observables)
+                site_gauge_observable_matrix[j, i] = real(inner(ψ', observable, ψ))
+            end
+        end
+
+        final_observables = zeros(Float64, length(observables))
+        for i in 1:length(observables)
+            final_observables[i] = sum(c_ks .* site_gauge_observable_matrix[i, :])
+        end
+
+        return final_observables
+    end
+
+    function multiproduct_particle_pair_simulation_2order(sites::Sites, observables::Vector{MPO}, J::Real, h::Real, λ::Real, particle_pair_left_position::Int, particle_pair_length::Int, final_time::Real, steps::Int, max_k::Int, cutoff::Real=1e-13, filepath::Union{String, Nothing}=nothing)
+        if length(sites) < 2
+            throw(ArgumentError("chain_length must be ≥ 2"))
+        end
+
+        if filepath !== nothing
+            if isfile(filepath)
+                site_gauge_observable_matrix = npzread(filepath)
+                return site_gauge_observable_matrix
+            end
+        end
+
+        times_arr = LinRange(0, final_time, steps+1)
+
+        # Initial state
+        initial_state_string = ["Up" for i in 1:length(sites)]
+        initial_state_string[2*particle_pair_left_position+1] = "Dn"
+        initial_state_string[2*particle_pair_left_position+2:2:2*particle_pair_left_position+1+2*particle_pair_length] .= "Dn"
+        initial_state_string[2*particle_pair_left_position+1+2*particle_pair_length] = "Dn"
+        ψ0 = MPS(sites, initial_state_string)
+        observables_matrix = zeros(Float64, (steps+1, length(observables)))
+        for (j, observable) in pairs(observables)
+            observables_matrix[1, j] = real(inner(ψ0', observable, ψ0))
+        end
+        
+        # Dynamic simulation
+        for (i, t) in pairs(times_arr[2:end])
+            print("\rStep $i")
+            ks, coefficients, condition_numbers = MultiProductF.search_mpf_parameters_ccost(final_time, 3, 2, max_k, MultiProductF.k_a_disp_onenorm_cost)
+            observables_matrix[i+1, :] = multiproduct_particle_pair_simulation_2order_single_t(sites, observables, J, h, λ, particle_pair_left_position, particle_pair_length, t, ks[1], coefficients[1, :], cutoff)
+        end
+
+        if filepath !== nothing
+            npzwrite(filepath, observables_matrix)
+        end
+
+        return observables_matrix
+    end
+
+end
