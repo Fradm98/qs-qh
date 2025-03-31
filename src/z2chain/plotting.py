@@ -20,7 +20,7 @@ def x_t_plot(site_gauge_observable_matrix, cbar_range=None, nxticks=5, filepath=
         plt.imshow(site_gauge_observable_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2)
     else:
         plt.imshow(site_gauge_observable_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2, vmax=cbar_range[1], vmin=cbar_range[0])
-    plt.imshow(site_gauge_observable_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2, vmax=1, vmin=0)
+    # plt.imshow(site_gauge_observable_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2, vmax=1, vmin=0)
     plt.title(r"Particle \& Gauge occupation")
     cbar = plt.colorbar()
     cbar.ax.set_ylabel(r"$(1 - \langle Z \rangle)/2$", labelpad=10)
