@@ -31,19 +31,26 @@ def get_error_slice(trotter_slices, error_layer_ind, error_inlayer_depth_pos, ba
         error_slices_to_combine = [right_slice_combined] + trotter_slices[error_layer_ind + 1::]
         return combine_slices(error_slices_to_combine, include_barriers=True)
     
-def propagate_error(slice, error_args):
+def error_tup_to_obs(slice, error_args):
     if not isinstance(error_args, tuple):
         raise ValueError("error args must be a tuple(int, int, int, Literal['X', 'Z'])")
     if len(error_args) != 4:
         raise ValueError("error args must be a tuple(int, int, int, Literal['X', 'Z'])")
-    if not isinstance(slice, QuantumCircuit):
-        raise ValueError("slice must be a QuantumCircuit")
-    
+
     error_obs_func = {
         "X": local_pauli_x,
         "Z": local_pauli_z
     }
-    error = SparsePauliOp(error_obs_func[error_args[-1]](slice.num_qubits, int(error_args[2])))
+    return SparsePauliOp(error_obs_func[error_args[-1]](slice.num_qubits, int(error_args[2])))
+
+def propagate_error(slice, error):
+    if not isinstance(error, SparsePauliOp):
+        raise ValueError("error must be a SparsePauliOp defined on the same qubits as slice")
+    if not isinstance(slice, QuantumCircuit):
+        raise ValueError("slice must be a QuantumCircuit")
+    if len(error.paulis[0]) != slice.num_qubits:
+        raise ValueError("error and slice must have the same number of qubits")
+
     propagated_error, remaining_slices, metadata = backpropagate(error, [slice])
     return propagated_error
 
@@ -55,7 +62,7 @@ def get_error_probabilities(propagated_error):
     error_phase_probabilities = np.sum(propagated_error_phase * propagated_error_probs.reshape((propagated_error_flips.shape[0], 1)), axis=0)
     return error_flip_probabilities, error_phase_probabilities
 
-def get_all_error_args(trotter_slices, steps):
+def get_all_error_args(trotter_slices):
     error_args = []
     steps = len(trotter_slices)
     layer_len = trotter_slices[0].depth()
