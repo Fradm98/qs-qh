@@ -1,4 +1,5 @@
 from utils.operations import expectation
+import utils.multiproductf as mpf
 import scipy.sparse as sparse
 from utils import paulis
 import numpy as np
@@ -30,6 +31,10 @@ def sparse_hamiltonian_interaction_terms(lamb, chain_length):
 def sparse_interaction_propagator(lamb, chain_length, t):
     interaction_terms = sparse_hamiltonian_interaction_terms(lamb, chain_length)
     return sparse.linalg.expm(-1j*interaction_terms*t)
+
+def sparse_diagonal_propagator(J, h, chain_length, t):
+    diagonal_terms = sparse_hamiltonian_single_qubit_terms(J, h, chain_length)
+    return sparse.linalg.expm(-1j*diagonal_terms*t)
 
 def sparse_qubit_occupation_operator(qubit, chain_length):
     nqubits = 2*chain_length - 1
@@ -132,7 +137,7 @@ def singlep_quench_simulation(L, J, h, lamb, particle_position, dt, steps, filep
 
     initial_state = singlep_initial_state(particle_position, L)
     if print_mode: print("\rCreating occupation operators...".ljust(50), end="")
-    occupation_operators = [sparse_qubit_occupation_operator(i, L) for i in range(2*L - 1)]
+    occupation_operators = [paulis.sparse_pauli_z(i, 2*L-1) for i in range(2*L - 1)]
     if print_mode: print("\rCreating propagator...".ljust(50), end="")
     base_propagator = sparse_propagator(J, h, lamb, L, dt)
 
@@ -155,6 +160,74 @@ def singlep_quench_simulation(L, J, h, lamb, particle_position, dt, steps, filep
             np.savetxt(filepath, site_gauge_occupation_matrix, header=header)
     return site_gauge_occupation_matrix
 
+def singlep_quench_trotter2_simulation(L, J, h, lamb, particle_position, dt, steps, filepath="", overwrite=False):
+    if os.path.exists(filepath) and not overwrite:
+        return np.loadtxt(filepath)
+    
+    initial_state = singlep_initial_state(particle_position, L)
+    diagonal_propagator = sparse_diagonal_propagator(J, h, L, dt/2)
+    interaction_propagator = sparse_interaction_propagator(lamb, L, dt)
+    step_propagator = diagonal_propagator @ interaction_propagator @ diagonal_propagator
+    occupation_operators = [paulis.sparse_pauli_z(i, 2*L-1) for i in range(2*L - 1)]
+    observable_matrix = np.zeros((steps + 1, 2*L - 1))
+    observable_matrix[0] = np.array([expectation(initial_state, socc_op).real for socc_op in occupation_operators])
+    current_state = initial_state.copy()
+    for i in range(steps):
+        current_state = step_propagator @ current_state
+        observable_matrix[i + 1] = np.array([expectation(current_state, socc_op).real for socc_op in occupation_operators])
+
+    if filepath:
+        extension = os.path.splitext(filepath)[1]
+        if extension == ".npy":
+            np.save(filepath, observable_matrix)
+        else:
+            np.savetxt(filepath, observable_matrix)
+    
+    return observable_matrix
+
+def singlep_quench_mpf2_simulation_single_t(L, J, h, lamb, particle_position, ks, coeffs, t):
+    initial_state = singlep_initial_state(particle_position, L)
+    occupation_operators = [paulis.sparse_pauli_z(i, 2*L-1) for i in range(2*L - 1)]
+    observable_matrix = np.zeros(2*L - 1)
+    for i, k in enumerate(ks):
+        this_diagonal_propagator = sparse_diagonal_propagator(J, h, L, t/2/k)
+        this_interaction_propagator = sparse_interaction_propagator(lamb, L, t/k)
+        this_propagator = this_diagonal_propagator @ this_interaction_propagator @ this_diagonal_propagator
+        this_propagator = sparse.linalg.matrix_power(this_propagator, k)
+        this_final_state = this_propagator @ initial_state
+        observable_matrix += coeffs[i] * np.array([expectation(this_final_state, socc_op).real for socc_op in occupation_operators])
+    
+    return observable_matrix
+
+def singlep_quench_mpf2_simulation(L, J, h, lamb, particle_position, ks, coeffs, dt, filepath="", overwrite=False):
+    if os.path.exists(filepath) and not overwrite:
+        return np.loadtxt(filepath)
+    
+    ks = np.array(ks)
+    coeffs = np.array(coeffs)
+    if ks.shape != coeffs.shape:
+        raise ValueError("ks and coeffs must have the same shape")
+    
+    if len(ks.shape) == 1:
+        raise ValueError("ks and coeffs must be 2D matrices")
+    steps = ks.shape[0]
+
+    initial_state = singlep_initial_state(particle_position, L)
+    occupation_operators = [paulis.sparse_pauli_z(i, 2*L-1) for i in range(2*L - 1)]
+    observable_matrix = np.zeros((steps + 1, 2*L - 1))
+    observable_matrix[0] = np.array([expectation(initial_state, socc_op).real for socc_op in occupation_operators])
+    for i in range(steps):
+        observable_matrix[i+1] = singlep_quench_mpf2_simulation_single_t(L, J, h, lamb, particle_position, ks[i], coeffs[i], dt*(i+1))
+    
+    if filepath:
+        extension = os.path.splitext(filepath)[1]
+        if extension == ".npy":
+            np.save(filepath, observable_matrix)
+        else:
+            np.savetxt(filepath, observable_matrix)
+    
+    return observable_matrix
+    
 def trotter_particle_pair_quench_simulation(L, J, h, lamb, particle_pair_left_position, final_time, layers, measure_every_layers=1, filepath="", overwrite=False, print_mode=False):
     if os.path.exists(filepath) and not overwrite:
         return np.loadtxt(filepath)
