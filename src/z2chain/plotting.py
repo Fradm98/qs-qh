@@ -315,7 +315,7 @@ def plot_string_observables(
             ax[1].legend(fontsize=12)
             ax[0].grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
             ax[1].grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
-            plt.suptitle("Matter $\&$ Gauge sites of the transverse and longitudinal strings")
+            plt.suptitle("Matter $\\&$ Gauge sites of the transverse and longitudinal strings")
             plt.show()
             
     else:
