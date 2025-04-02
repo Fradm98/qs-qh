@@ -23,6 +23,7 @@ def pauli_xs_mean(nqubits):
     return logical_observable
 
 def pauli_pair_z(nqubits, qubit_inds):
+    qubit_inds = sorted(qubit_inds)
     qubit_ind1 = qubit_inds[0]
     qubit_ind2 = qubit_inds[1]
     if qubit_ind1 > nqubits:
@@ -32,6 +33,7 @@ def pauli_pair_z(nqubits, qubit_inds):
     return Pauli("I"*qubit_ind1 + "Z" + "I"*(qubit_ind2 - qubit_ind1 - 1) + "Z" + "I"*(nqubits - qubit_ind2 - 1))
 
 def pauli_pair_x(nqubits, qubit_inds):
+    qubit_inds = sorted(qubit_inds) 
     qubit_ind1 = qubit_inds[0]
     qubit_ind2 = qubit_inds[1]
     if qubit_ind1 > nqubits:
