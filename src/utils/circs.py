@@ -36,14 +36,27 @@ def remove_idle_qwires(circ, relabeling=None):
         for instruction_data in before_relabeling.data:
             if instruction_data.operation.name == "measure":
                 measurement_operations.append(instruction_data)
+            elif instruction_data.operation.name == "barrier":
+                to_return.barrier()
             else:
                 to_return.append(instruction_data.operation, qargs=[relabeling[qubit._index] for qubit in instruction_data.qubits])
         # Place the measurement operations at the end
         for measurement_instruction in measurement_operations:
-            new_indices = [relabeling[qubit._index] for qubit in instruction_data.qubits]
+            new_indices = [relabeling[qubit._index] for qubit in measurement_instruction.qubits]
             to_return.append(measurement_instruction.operation, qargs=new_indices, cargs=new_indices)
         
     return to_return
+
+def remove_final_measurements(circuit):
+    circuit = circuit.copy()
+    for op in circuit.data[::-1]:
+        if op.operation.name == "measure":
+            circuit.data.remove(op)
+        elif op.operation.name == "barrier":
+            circuit.data.remove(op)
+        else:
+            break
+    return circuit
 
 def check_and_measure_active_qubits(circuit):
     if not circuit.cregs:

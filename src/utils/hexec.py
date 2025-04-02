@@ -37,11 +37,16 @@ class ExecDB:
             ]
             +
             [
-                np.array_equal(batch["nqubits_arr"], sorted(list({len(physical_circuit.layout.final_index_layout()) for physical_circuit in physical_circuits}))),
+                # np.array_equal(batch["nqubits_arr"], sorted(list({len(physical_circuit.layout.final_index_layout()) for physical_circuit in physical_circuits}))),
                 np.array_equal(batch["depths_arr"], sorted(list({physical_circuit.depth() for physical_circuit in physical_circuits}))),
                 batch["observables_func_name"] == observable_func_name
             ])
             if not strict_depth: del is_equal[-2]
+            try:
+                nqubits_arr_to_compare = sorted(list({len(physical_circuit.layout.final_index_layout()) for physical_circuit in physical_circuits}))
+                is_equal.append(np.array_equal(batch["nqubits_arr"], nqubits_arr_to_compare))
+            except AttributeError:
+                pass
             if all(is_equal): indices_to_return.append(len(self._data) - 1 - i)
             if len(indices_to_return) >= limit: break
         return indices_to_return
@@ -94,13 +99,16 @@ class ExecDB:
     @classmethod
     def generate_batch_db_data(cls, batch_args, physical_circuits, observable_generating_func_name, job_ids_arr):
         data_to_add = batch_args
-        data_to_add["nqubits_arr"] = sorted(list({len(physical_circuit.layout.final_index_layout()) for physical_circuit in physical_circuits}))
+        try:
+            data_to_add["nqubits_arr"] = sorted(list({len(physical_circuit.layout.final_index_layout()) for physical_circuit in physical_circuits}))
+        except AttributeError:
+            pass
         data_to_add["depths_arr"] = sorted(list({physical_circuit.depth() for physical_circuit in physical_circuits}))
         if callable(observable_generating_func_name):
             data_to_add["observables_func_name"] = observable_generating_func_name.__name__
         else:
             data_to_add["observables_func_name"] = str(observable_generating_func_name)
-        data_to_add["jobs"] = [{"job_id": jid, "nqubits": len(physical_circuit.layout.final_index_layout()), "depth": physical_circuit.depth(), "layout": physical_circuit.layout.final_index_layout()} for jid, physical_circuit in zip(job_ids_arr, physical_circuits)]
+        data_to_add["jobs"] = [{"job_id": jid, "nqubits": len(physical_circuit.layout.final_index_layout()) if physical_circuit.layout is not None else None, "depth": physical_circuit.depth(), "layout": physical_circuit.layout.final_index_layout() if physical_circuit.layout is not None else None} for jid, physical_circuit in zip(job_ids_arr, physical_circuits)]
         return data_to_add
     
     def add(self, batch_args, physical_circuits, observable_generating_func_name, job_ids_arr):

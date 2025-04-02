@@ -37,7 +37,15 @@ def bootstrap_sample_dict_mean(samples_dict, string_expectation_values, confiden
         U_sample =  (n_resamples - 1) * (jackknife_mean - jackknife_samples)
         num = np.sum(U_sample**3) / n_resamples**3
         den = np.sum(U_sample**2) / n_resamples**2
-        a_hat = num / (6 * den**(3/2))
+        if np.isclose(den, 0):
+            if np.isclose(num, 0):
+                a_hat = 1/6
+            else:
+                confidence_intervals.append((np.nan, np.nan))
+                if return_std: stds.append(np.nan)
+                continue
+        else:
+            a_hat = num / (6 * den**(3/2))
 
         z_alpha = sp.special.ndtri(alpha)
         z1_alpha = -z_alpha

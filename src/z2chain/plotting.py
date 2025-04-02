@@ -20,7 +20,7 @@ def x_t_plot(site_gauge_observable_matrix, cbar_range=None, nxticks=5, filepath=
         plt.imshow(site_gauge_observable_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2)
     else:
         plt.imshow(site_gauge_observable_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2, vmax=cbar_range[1], vmin=cbar_range[0])
-    plt.imshow(site_gauge_observable_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2, vmax=1, vmin=0)
+    # plt.imshow(site_gauge_observable_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2, vmax=1, vmin=0)
     plt.title(r"Particle \& Gauge occupation")
     cbar = plt.colorbar()
     cbar.ax.set_ylabel(r"$(1 - \langle Z \rangle)/2$", labelpad=10)
@@ -33,7 +33,7 @@ def x_t_plot(site_gauge_observable_matrix, cbar_range=None, nxticks=5, filepath=
     plt.show()
     plt.rcdefaults()
 
-def x_t_separated_plot(site_gauge_z_matrix, cbar_range=None, nxticks=5, filepath=""):
+def x_t_separated_plot(site_gauge_z_matrix, cbar_range_matter=None, cbar_range_gauge=None, nxticks=5, filepath=""):
     if isinstance(site_gauge_z_matrix[0], BasePrimitiveJob) or isinstance(site_gauge_z_matrix[0], RuntimeJob):
         site_gauge_z_matrix = convert_jobs_to_site_gauge_matrix(site_gauge_z_matrix)
     else:
@@ -49,13 +49,16 @@ def x_t_separated_plot(site_gauge_z_matrix, cbar_range=None, nxticks=5, filepath
 
     aspect = site_gauge_z_matrix.shape[0]/site_gauge_z_matrix.shape[1]/15
 
-    if cbar_range is None:
+    if cbar_range_matter is None:
         imm = ax[0].imshow(matter_occupation_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2)
+    else:
+        imm = ax[0].imshow(matter_occupation_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2, vmax=cbar_range_matter[1], vmin=cbar_range_matter[0])
+    
+    if cbar_range_gauge is None:
         img = ax[1].imshow(gauge_z_matrix, cmap="bwr", aspect=aspect if aspect > 1/2 else 1/2)
     else:
-        imm = ax[0].imshow(matter_occupation_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2, vmax=cbar_range[1], vmin=cbar_range[0])
-        img = ax[1].imshow(gauge_z_matrix, cmap="bwr", aspect=aspect if aspect > 1/2 else 1/2, vmax=cbar_range[1], vmin=cbar_range[0])
-    
+        img = ax[1].imshow(gauge_z_matrix, cmap="bwr", aspect=aspect if aspect > 1/2 else 1/2, vmax=cbar_range_gauge[1], vmin=cbar_range_gauge[0])
+
     cbarm = plt.colorbar(imm, ax=ax[0])
     cbarm.ax.set_ylabel(r"$(1 - \langle Z \rangle)/2$", labelpad=10)
 

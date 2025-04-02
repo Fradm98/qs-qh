@@ -1,6 +1,6 @@
+from utils.postselection import get_recovered_postselected_samples_dict, combine_samples_dicts, get_logical_samples_dict
 from utils.postselection import diagonal_operators_check, get_layout_state
 from qiskit.primitives.base.base_primitive_job import BasePrimitiveJob
-from utils.postselection import measure_diagonal_observables
 from qiskit.primitives.primitive_job import PrimitiveJob
 from utils.circs import depth2qb
 import matplotlib.pyplot as plt
@@ -255,7 +255,7 @@ def plot_circuit_arr_depth(circuit_arr, x_ticks=None, x_label=None, filepath="")
     plt.show()
     plt.rcdefaults()
 
-def plot_individual_qubits_observable_evolution(observable_matrix, observable_confidence_matrix=None, ylabel=None, cmap=None, x_ticks=None, x_label=None, markers=None, funclabels=None, title="", legend=True, filepath=None):
+def plot_individual_qubits_observable_evolution(observable_matrix, observable_confidence_matrix=None, ylabel=None, cmap=None, x_ticks=None, x_label=None, y_lim=None, markers=None, funclabels=None, title="", legend=True, filepath=None):
     observable_matrix = np.array(observable_matrix)
     if observable_confidence_matrix is not None:
         observable_confidence_matrix = np.array(observable_confidence_matrix)
@@ -297,6 +297,8 @@ def plot_individual_qubits_observable_evolution(observable_matrix, observable_co
     plt.xlabel(x_label)
     plt.ylabel(ylabel, labelpad=10)
     plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
+    if y_lim is not None:
+        plt.ylim(y_lim)
     if title:
         plt.title(title, pad=10)
     plt.tight_layout()
@@ -306,7 +308,7 @@ def plot_individual_qubits_observable_evolution(observable_matrix, observable_co
     plt.show()
     plt.rcdefaults()
 
-def plot_average_qubits_observable_evolution(observable_matrix, average_qubits, observable_confidence_matrix=None, cmap=None, x_ticks=None, x_label=None, y_ticks=None, ylabel=None, markers=None, funclabels=None, title="", legend=True, filepath=None):
+def plot_average_qubits_observable_evolution(observable_matrix, average_qubits, observable_confidence_matrix=None, cmap=None, x_ticks=None, x_label=None, y_lim=None, y_ticks=None, ylabel=None, markers=None, funclabels=None, title="", legend=True, filepath=None):
     observable_matrix = np.array(observable_matrix)
     if observable_confidence_matrix is not None:
         observable_confidence_matrix = np.array(observable_confidence_matrix)
@@ -352,6 +354,8 @@ def plot_average_qubits_observable_evolution(observable_matrix, average_qubits, 
     plt.ylabel(ylabel, labelpad=10)
     if y_ticks is not None:
         plt.yticks(y_ticks)
+    if y_lim is not None:
+        plt.ylim(y_lim)
     plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
     if legend: plt.legend(loc="best", fontsize=16)
     if title:
@@ -362,3 +366,160 @@ def plot_average_qubits_observable_evolution(observable_matrix, average_qubits, 
     plt.show()
     plt.rcdefaults()
 
+def plot_discarded_samples(samples_dicts, postselection_operators, flip_thresholds, circs_layouts=None, cmap=None, x_ticks=None, x_ticks_upper_func=None, x_label=None, x_label_upper=None, y_ticks=None, markers=None, regression=False, title="", legend=False, filepath=""):
+    try:
+        odr_samples_dicts = samples_dicts[1]
+        real_start_index = odr_samples_dicts.shape[1]
+    except IndexError:
+        real_start_index = 0
+    real_samples_dicts = samples_dicts[0]
+    if circs_layouts is not None and real_samples_dicts.shape != (circs_layouts.shape[0], circs_layouts.shape[1]-real_start_index):
+        raise ValueError("samples_dicts and circs_layouts do not have appropiate shapes")
+    accepted_samples_ratio = np.zeros((len(flip_thresholds), real_samples_dicts.shape[1]))
+    for i, flip_threshold in enumerate(flip_thresholds):
+        for time_ind in range(real_samples_dicts.shape[1]):
+            all_layouts_samples = real_samples_dicts[:, time_ind]
+            if circs_layouts is not None:
+                to_combine_samples = [get_logical_samples_dict(all_layouts_samples[j], circs_layouts[j, time_ind+real_start_index]) for j in range(len(all_layouts_samples))]
+            else:
+                to_combine_samples = all_layouts_samples
+            combined_samples = combine_samples_dicts(*to_combine_samples)
+            postselected_combined_samples = get_recovered_postselected_samples_dict(combined_samples, postselection_operators, flip_threshold=flip_threshold)
+            accepted_samples_ratio[i, time_ind] = sum(postselected_combined_samples.values())/sum(combined_samples.values())
+    
+    if cmap is None:
+        cmap = plt.get_cmap("Set2")
+    plt.rc("text", usetex=True)
+    plt.rc("font", size=20, family="serif", weight="bold")
+    fig, ax = plt.subplots(figsize=[9, 6])
+    if x_ticks is not None:
+        x = np.linspace(x_ticks[0], x_ticks[-1], real_samples_dicts.shape[1])
+    else:
+        x = np.arange(samples_dicts.shape[1])
+    for i, flip_threshold in enumerate(flip_thresholds):
+        color = cmap((i % 8))
+        plt.plot(x, accepted_samples_ratio[i], marker=markers[i] if markers is not None else "o", markersize=10, markeredgecolor="black", color=color, label=f"Max. {flip_threshold} flips")
+
+    if regression:
+        def reg_func(x, a, b):
+            return b*np.exp(-a*x)
+        x_regression = np.linspace(x[0], x[-1], 100)
+        for i, flip_threshold in enumerate(flip_thresholds):
+            popt, _ = sp.optimize.curve_fit(reg_func, x, accepted_samples_ratio[i], p0=[1, 1])
+            plt.plot(x_regression, reg_func(x_regression, *popt), "--", color=cmap((i % 8)), label=rf"$a = {popt[0]}, b = {popt[1]}$")
+    
+    if x_label is not None:
+        plt.xlabel(x_label)
+    elif x_label is None and x_ticks is None:
+        plt.xlabel("Job index", labelpad=10)
+    if x_ticks_upper_func is not None:
+        upper_xticks = ax.twiny()
+        upper_xticks.set_xticks(x_ticks)
+        upper_xticks.set_xticklabels(x_ticks_upper_func(x_ticks))
+        if x_label_upper is not None:
+            upper_xticks.set_xlabel(x_label_upper, labelpad=10)
+    if y_ticks is not None:
+        plt.yticks(y_ticks)
+    plt.ylabel(r"$N_{\mathrm{post}}/N_{\mathrm{total}}$", labelpad=10)
+    plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
+    if legend: plt.legend(loc="best", fontsize=16)
+    if title:
+        plt.title(title, pad=10)
+    plt.tight_layout()
+    if filepath:
+        plt.savefig(filepath, dpi=300, facecolor="none")
+    plt.show()
+    plt.rcdefaults()
+
+def plot_mean_deviations(observable_matrices_1, observable_matrices_2, x_ticks=None, x_label=None, y_lim=None, labels=None, cmap=None, title="", filepath=None):
+    observable_matrices_1 = np.array(observable_matrices_1)
+    observable_matrices_2 = np.array(observable_matrices_2)
+
+    if observable_matrices_1.shape != observable_matrices_2.shape:
+        raise ValueError("Observable matrices must have the same shape")
+    
+    if len(observable_matrices_1.shape) == 2:
+        observable_matrices_1 = observable_matrices_1[None]
+        observable_matrices_2 = observable_matrices_2[None]
+
+    if labels is not None:
+        if len(labels) != observable_matrices_1.shape[0]:
+            raise ValueError("labels must have the same length as number of observable")
+    else:
+        labels = [f"Params ${i}$" for i in range(observable_matrices_1.shape[0])]
+    
+    plt.rc("text", usetex=True)
+    plt.rc("font", size=20, family="serif", weight="bold")
+    if cmap is None:
+        cmap = plt.get_cmap("Set2")
+    
+    mean_deviations = np.nanmean(np.abs(observable_matrices_1 - observable_matrices_2), axis=-1)
+    x = np.arange(mean_deviations.shape[1])
+
+    fig, ax = plt.subplots(figsize=[9, 6])
+    for i, mean_deviation in enumerate(mean_deviations):
+        color = cmap((i % 8)/8 + 0.01)
+        plt.plot(x, mean_deviation, "o--", markersize=12, markeredgecolor="black", color=color, label=labels[i])
+    if x_ticks is not None:
+        plt.xticks(*x_ticks)
+    if x_label is not None:
+        plt.xlabel(x_label)
+    if y_lim is not None:
+        plt.ylim(y_lim)
+    plt.ylabel(r"$| \langle O \rangle_1 - \langle O \rangle_2 |$", labelpad=10)
+    if title:
+        plt.title(title)
+    plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
+    plt.tight_layout()
+    plt.legend(loc="best", fontsize=12)
+    if filepath:
+        plt.savefig(filepath, dpi=300, facecolor="none")
+    plt.show()
+    plt.rcdefaults()
+
+def plot_max_deviation(observable_matrices_1, observable_matrices_2, x_ticks=None, x_label=None, y_lim=None, labels=None, cmap=None, title="", filepath=None):
+    observable_matrices_1 = np.array(observable_matrices_1)
+    observable_matrices_2 = np.array(observable_matrices_2)
+
+    if observable_matrices_1.shape != observable_matrices_2.shape:
+        raise ValueError("Observable matrices must have the same shape")
+    
+    if len(observable_matrices_1.shape) == 2:
+        observable_matrices_1 = observable_matrices_1[None]
+        observable_matrices_2 = observable_matrices_2[None]
+
+    if labels is not None:
+        if len(labels) != observable_matrices_1.shape[0]:
+            raise ValueError("labels must have the same length as number of observable")
+    else:
+        labels = [f"Params ${i}$" for i in range(observable_matrices_1.shape[0])]
+    
+    plt.rc("text", usetex=True)
+    plt.rc("font", size=20, family="serif", weight="bold")
+    if cmap is None:
+        cmap = plt.get_cmap("Set2")
+    
+    max_deviations = np.nanmax((np.abs(observable_matrices_1 - observable_matrices_2)), axis=1)
+    x = np.arange(len(max_deviations))
+
+    fig, ax = plt.subplots(figsize=[9, 6])
+    for i, max_deviation in enumerate(max_deviations):
+        color = cmap((i % 8)/8 + 0.01)
+        plt.plot(x, max_deviations, "o--", markersize=12, markeredgecolor="black", color=color, label=labels[i])
+    
+    if x_ticks is not None:
+        plt.xticks(*x_ticks)
+    if x_label is not None:
+        plt.xlabel(x_label)
+    if y_lim is not None:
+        plt.ylim(y_lim)
+    plt.ylabel(r"$\max_k | \langle O_k \rangle_1 - \langle O_k \rangle_2 |$", labelpad=10)
+    if title:
+        plt.title(title)
+    plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
+    plt.tight_layout()
+    plt.legend(loc="best", fontsize=12)
+    if filepath:
+        plt.savefig(filepath, dpi=300, facecolor="none")
+    plt.show()
+    plt.rcdefaults()
