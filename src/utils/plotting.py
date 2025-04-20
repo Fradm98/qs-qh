@@ -255,7 +255,7 @@ def plot_circuit_arr_depth(circuit_arr, x_ticks=None, x_label=None, filepath="")
     plt.show()
     plt.rcdefaults()
 
-def plot_individual_qubits_observable_evolution(observable_matrix, observable_confidence_matrix=None, ylabel=None, cmap=None, x_ticks=None, x_label=None, y_lim=None, markers=None, funclabels=None, title="", legend=True, filepath=None):
+def plot_individual_qubits_observable_evolution(observable_matrix, observable_confidence_matrix=None, function_over=None, ylabel=None, cmap=None, x_ticks=None, x_label=None, y_lim=None, markers=None, funclabels=None, title="", legend=True, filepath=None):
     observable_matrix = np.array(observable_matrix)
     if observable_confidence_matrix is not None:
         observable_confidence_matrix = np.array(observable_confidence_matrix)
@@ -294,6 +294,8 @@ def plot_individual_qubits_observable_evolution(observable_matrix, observable_co
             plt.errorbar(x, y, yerr=yerr, fmt="--", marker=markers[i] if markers is not None else "o", markersize=10, elinewidth=2, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}")
         else:
             plt.plot(x, y, "--", marker=markers[i] if markers is not None else "o", markersize=10, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}")
+    if function_over is not None:
+        plt.plot(x, function_over(x), "--", color=cmap(((i+1) % 8)), label=funclabels[i+1] if funclabels is not None else f"Function")
     plt.xlabel(x_label)
     plt.ylabel(ylabel, labelpad=10)
     plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
@@ -519,6 +521,54 @@ def plot_max_deviation(observable_matrices_1, observable_matrices_2, x_ticks=Non
     plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
     plt.tight_layout()
     plt.legend(loc="best", fontsize=12)
+    if filepath:
+        plt.savefig(filepath, dpi=300, facecolor="none")
+    plt.show()
+    plt.rcdefaults()
+
+def plot_individual_qubits_htn_comparison(observable_matrix_hardware, observable_matrix_tn, qubit_indices, x_ticks=None, x_label=None, y_label=None, y_lim=None, labels=None, cmap=None, title="", legend=None, filepath=None):
+    observable_matrix_hardware = np.array(observable_matrix_hardware)[:, qubit_indices]
+    observable_matrix_tn = np.array(observable_matrix_tn)[:, qubit_indices]
+    
+    if labels is not None:
+        if len(labels) != observable_matrix_hardware.shape[0]:
+            raise ValueError("labels must have the same length as number of observable")
+    
+    if cmap is None:
+        cmap = plt.get_cmap("Set2")
+    plt.rc("text", usetex=True)
+    plt.rc("font", size=20, family="serif", weight="bold")
+    fig, ax = plt.subplots(figsize=[9, 6])
+
+    if x_ticks is not None:
+        if len(x_ticks.shape) == 1:
+            plt.xticks(x_ticks)
+        else:
+            plt.xticks(*x_ticks)
+        x_hardware = np.linspace(x_ticks[0], x_ticks[-1], observable_matrix_hardware.shape[0])
+        x_tn = np.linspace(x_ticks[0], x_ticks[-1], observable_matrix_tn.shape[0])
+    else:
+        x_hardware = np.arange(observable_matrix_hardware.shape[0])
+        x_tn = np.arange(observable_matrix_tn.shape[1])
+
+    if labels is None:
+        labels = ["Hardware", "TN"]
+
+    for i in range(observable_matrix_hardware.shape[1]):
+        color = cmap((i % 8))
+        plt.plot(x_tn, observable_matrix_tn[:, i], "-", markersize=10, markeredgecolor="black", color=color, label=labels[1], linewidth=2)
+        plt.plot(x_hardware, observable_matrix_hardware[:, i], "o", markersize=10,  markeredgecolor="black", color=color, label=labels[0])
+    
+    plt.xlabel(x_label)
+    plt.ylabel(y_label, labelpad=10)
+    plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
+    if y_lim is not None:
+        plt.ylim(y_lim)
+    if title:
+        plt.title(title, pad=10)
+    plt.tight_layout()
+    if legend:
+        plt.legend(loc="best", fontsize=12)
     if filepath:
         plt.savefig(filepath, dpi=300, facecolor="none")
     plt.show()
