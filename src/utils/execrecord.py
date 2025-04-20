@@ -5,7 +5,7 @@ import numpy as np
 import os
 
 class ExecutionRecord:
-    columns = ["J", "h", "lamb", "g", "final_time", "dt", "steps", "px", "py", "first_qb_or_all", "device", "date", "shots", "string_qubits", "odr"]
+    columns = ["J", "h", "lamb", "g", "final_time", "dt", "steps", "px", "py", "first_qb_or_all", "device", "date", "shots", "string_qubits", "calibration"]
     def __init__(self, filepath):
         self.filepath = filepath
         if os.path.exists(filepath):
