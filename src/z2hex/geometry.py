@@ -124,7 +124,7 @@ class HeavyHexLattice:
         """
         backend_name = backends_objs_to_names(backend)
         ibm_qubit_coords = []
-        if backend_name == 'ibm_fez' or backend_name == 'ibm_marrakesh':
+        if backend_name in ["ibm_fez", "ibm_marrakesh", "ibm_aachen", "ibm_kingston"]:
             for i in range(8):
                 for j in range(16):
                     ibm_qubit_coords.append((2*i, j))
