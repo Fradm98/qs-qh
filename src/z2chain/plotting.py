@@ -33,7 +33,7 @@ def x_t_plot(site_gauge_observable_matrix, cbar_range=None, nxticks=5, filepath=
     plt.show()
     plt.rcdefaults()
 
-def x_t_separated_plot(site_gauge_z_matrix, cbar_range_matter=None, cbar_range_gauge=None, nxticks=5, filepath=""):
+def x_t_separated_plot(site_gauge_z_matrix, cbar_range_matter=None, cbar_range_gauge=None, nxticks=5, ylabel=None, y_ticks=None, cbar_matter_label=r"$(1 - \langle Z \rangle)/2$", cbar_gauge_label=r"$\langle Z \rangle$", filepath=""):
     if isinstance(site_gauge_z_matrix[0], BasePrimitiveJob) or isinstance(site_gauge_z_matrix[0], RuntimeJob):
         site_gauge_z_matrix = convert_jobs_to_site_gauge_matrix(site_gauge_z_matrix)
     else:
@@ -60,10 +60,10 @@ def x_t_separated_plot(site_gauge_z_matrix, cbar_range_matter=None, cbar_range_g
         img = ax[1].imshow(gauge_z_matrix, cmap="bwr", aspect=aspect if aspect > 1/2 else 1/2, vmax=cbar_range_gauge[1], vmin=cbar_range_gauge[0])
 
     cbarm = plt.colorbar(imm, ax=ax[0])
-    cbarm.ax.set_ylabel(r"$(1 - \langle Z \rangle)/2$", labelpad=10)
+    cbarm.ax.set_ylabel(cbar_matter_label, labelpad=10)
 
     cbarg = plt.colorbar(img, ax=ax[1])
-    cbarg.ax.set_ylabel(r"$\langle Z \rangle$", labelpad=10)
+    cbarg.ax.set_ylabel(cbar_gauge_label, labelpad=10)
 
     ax[0].set_xlabel(r"Matter sites")
     ax[1].set_xlabel(r"Gauge sites")
@@ -72,6 +72,11 @@ def x_t_separated_plot(site_gauge_z_matrix, cbar_range_matter=None, cbar_range_g
     ax[0].set_xticks(np.round(np.linspace(0, matter_occupation_matrix.shape[1]-1, nxticks)).astype(int), np.round(np.linspace(1, matter_occupation_matrix.shape[1], nxticks)).astype(int))
     gauge_ticks_location = np.round(np.linspace(0, gauge_z_matrix.shape[1]-1, nxticks)).astype(int)
     ax[1].set_xticks(gauge_ticks_location, [f"({g+1}, {g+2})" for g in gauge_ticks_location])
+
+    if ylabel is not None:
+        ax[0].set_ylabel(ylabel)
+    if y_ticks is not None:
+        ax[0].set_yticks(*y_ticks)
 
     # plt.suptitle(r"Particle \& Gauge occupation", horizontalalignment="center")
 
