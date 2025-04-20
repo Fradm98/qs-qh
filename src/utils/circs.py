@@ -158,6 +158,8 @@ def iterate_nested_list(nested_list):
             yield element
 
 def numpy_array_of_circuits(circuits):
+    if isinstance(circuits, np.ndarray):
+        return circuits
     dimensions = 0
     last_element = circuits
     dimensions_length = []
