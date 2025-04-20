@@ -296,7 +296,13 @@ def string_quench_simulation_circuits_dt(chain_length, J, h, lamb, final_time, d
     for i in range(steps):
         evolved_circuits.append(logical_string_quench_simulation_circuit(chain_length, J, h, lamb, dt_arr[i], nlayers_arr[i], g_func, particle_pair_left_position, particle_pair_length, x_basis, barriers, measure))
     logical_time_circs += evolved_circuits
-    physical_time_circs = trotter_pm.run(logical_time_circs)
+    if layout is None:
+        physical_time_circs = trotter_pm.run(logical_time_circs[:2])
+        first_layout = physical_time_circs[1].layout.final_index_layout()
+        trotter_pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=first_layout)
+        physical_time_circs += trotter_pm.run(logical_time_circs[2:])
+    else:
+        physical_time_circs = trotter_pm.run(logical_time_circs)
     return physical_time_circs
 
 def string_quench_simulation_circuit_mpf_single_t(chain_length, J, h, lamb, t, ks, pm, g_func=None, particle_pair_left_position=None, particle_pair_length=None, x_basis=False, barriers=False):
@@ -386,9 +392,13 @@ def string_quench_odr_compuncomp_circuits_dt(chain_length, J, h, lamb, final_tim
     for i in range(steps):
         evolved_circuits.append(logical_string_quench_odr_circuit(chain_length, J, h, lamb, dt_arr[i], nlayers_arr[i], g, particle_pair_left_position, particle_pair_length, x_basis, barriers))
     logical_time_circs += evolved_circuits
-    physical_time_circs = trotter_pm.run(logical_time_circs)
-    # if fractional_gates:
-    #     physical_time_circs = sched_pm.run(physical_time_circs)
+    if layout is None:
+        physical_time_circs = trotter_pm.run(logical_time_circs[:2])
+        first_layout = physical_time_circs[1].layout.final_index_layout()
+        trotter_pm = generate_preset_pass_manager(optimization_level=optimization_level, backend=backend, initial_layout=first_layout)
+        physical_time_circs += trotter_pm.run(logical_time_circs[2:])
+    else:
+        physical_time_circs = trotter_pm.run(logical_time_circs)
     return physical_time_circs
 
 def string_quench_odr_compuncomp_circuits_mpf(chain_length, J, h, lamb, dt, ks_matrix, backend, optimization_level, g_func=None, particle_pair_left_position=None, particle_pair_length=None, layout=None, x_basis=False, barriers=False, measure=True):
