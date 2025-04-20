@@ -95,7 +95,8 @@ def particle_pair_initial_state(left_particle_position, chain_length):
 def singlep_initial_state(particle_position, chain_length):
     nqubits = 2*chain_length - 1
     state = np.zeros(2**nqubits)
-    index = 2**(nqubits - 2*particle_position - 1) + np.sum(2**(nqubits - 2*particle_position - 2 - 2*np.arange(chain_length//2))) 
+    # index = 2**(nqubits - 2*particle_position - 1) + np.sum(2**(nqubits - 2*particle_position - 2 - 2*np.arange(chain_length//2))) 
+    index = 2**(nqubits - 2*particle_position - 1) + np.sum(2**(nqubits - 2*particle_position - 2 - 2*np.arange(chain_length//2 - (1 if chain_length % 2 == 0 else 0))))
     state[index] = 1
     return state
 
@@ -121,6 +122,7 @@ def particle_pair_quench_simulation(L, J, h, lamb, particle_pair_left_position, 
         if print_mode:
             t = dt*i
             print(f"\rt = {t:.04f}".ljust(50), end="")
+        # current_state_state = sparse_propagator(J, h, lamb, L, dt*i) @ initial_state
         this_qubits_occupation = np.array([expectation(current_state, socc_op).real for socc_op in occupation_operators])
         site_gauge_occupation_matrix[i] = this_qubits_occupation
         current_state = base_propagator @ current_state
