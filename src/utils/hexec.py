@@ -3,10 +3,10 @@
 #                 IN HARDWARE
 # -----------------------------------------------
 
+from utils.circs import check_and_measure_active_qubits, numpy_array_of_circuits
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit.quantum_info import Pauli, PauliList, SparsePauliOp
 from qiskit_ibm_runtime import Batch, EstimatorV2, SamplerV2
-from utils.circs import check_and_measure_active_qubits
 from itertools import product
 import numpy as np
 import json
@@ -213,45 +213,37 @@ def execute_estimator_batch(backend, estimator_opt_dict, transpiled_circuits, ob
 
     return job_objs
 
-def execute_sampler_batch(backend, sampler_opt_dicts, transpiled_circuits, extra_circuits=None, extra_sampler_opts_dict_ind=0, batch=None, job_db=None):
+def execute_sampler_batch(backend, sampler_opt_dicts, circuits, batch=None, job_db=None):
     if type(sampler_opt_dicts) not in [list, tuple, np.ndarray]:
         sampler_opt_dicts = [sampler_opt_dicts]
-    if type(transpiled_circuits) not in [list, tuple, np.ndarray]:
-        transpiled_circuits = [transpiled_circuits]
-    if (extra_circuits is not None) and (type(extra_circuits) not in [list, tuple, np.ndarray]):
-        extra_circuits = [extra_circuits]
-    
-    job_objs = []
-    executed_circuits = []
+    if type(circuits) not in [list, tuple, np.ndarray]:
+        circuits = [circuits]
 
+    sampler_opt_dicts = np.array(sampler_opt_dicts, dtype=object)
+    circuits = numpy_array_of_circuits(circuits)
+
+    try:
+        circuits, sampler_opt_dicts = np.broadcast_arrays(circuits, sampler_opt_dicts)
+    except ValueError:
+        raise ValueError("sampler_opt_dicts and circuits must be broadcastable")
+    circuits = circuits.flatten()
+    sampler_opt_dicts = sampler_opt_dicts.flatten()
+    
     if batch is None:
         batch = Batch(backend=backend)
 
-    if extra_circuits is not None:
-        sampler = SamplerV2(mode=batch, options=sampler_opt_dicts[extra_sampler_opts_dict_ind])
-        try:
-            executed_circuits += extra_circuits
-        except ValueError:
-            executed_circuits += extra_circuits.tolist()
-        for circ in extra_circuits:
-            this_circ = check_and_measure_active_qubits(circ)
-            job_objs.append(sampler.run([this_circ]))
-    try:
-        executed_circuits += transpiled_circuits
-    except ValueError:
-        executed_circuits += transpiled_circuits.tolist()
-    for sampler_opt_dict in sampler_opt_dicts:
-        sampler = SamplerV2(mode=batch, options=sampler_opt_dict)
-        for circ in transpiled_circuits:
-            this_circ = check_and_measure_active_qubits(circ)
-            job_objs.append(sampler.run([this_circ]))
-
+    job_objs = []
+    for circuit, options in zip(circuits, sampler_opt_dicts):
+        circuit = check_and_measure_active_qubits(circuit)
+        sampler = SamplerV2(mode=batch, options=options)
+        job_objs.append(sampler.run([circuit]))
+    
     if batch is None: batch.close()
 
     if job_db is not None:
         job_ids = [job.job_id() for job in job_objs]
-        job_db.add(sampler_opt_dicts[0], executed_circuits, "Sampler", job_ids)
-
+        job_db.add(sampler_opt_dicts[0], circuits, "Sampler", job_ids)
+    
     return job_objs
 
 def get_backend_best_qubit_chain(backend, nqubits):
