@@ -5,7 +5,7 @@ import numpy as np
 import os
 
 class ExecutionRecord:
-    columns = ["J", "h", "lamb", "g", "final_time", "dt", "steps", "px", "py", "first_qb_or_all", "device", "date", "shots", "string_qubits", "calibration"]
+    columns = ["J", "h", "lamb", "g", "final_time", "dt", "steps", "px", "py", "first_qb_or_all", "device", "date", "shots", "string_qubits", "x_basis", "calibration"]
     def __init__(self, filepath):
         self.filepath = filepath
         if os.path.exists(filepath):
@@ -17,7 +17,7 @@ class ExecutionRecord:
     def save(self):
         self.df.to_excel(self.filepath, index=False)
     
-    def add_record(self, J, h, lamb, g, final_time, dt, steps, lattice, first_qb_or_all, device, shots, string_qubits, odr):
+    def add_record(self, J, h, lamb, g, final_time, dt, steps, lattice, first_qb_or_all, device, shots, string_qubits, x_basis, calibration):
         new_row = [
             np.array(J).tolist(), 
             np.array(h).tolist(), 
@@ -33,7 +33,8 @@ class ExecutionRecord:
             datetime.now().strftime("%d/%m/%Y %H:%M:%S"), 
             shots,
             string_qubits,
-            str(odr)
+            str(x_basis),
+            str(calibration)
         ]
         self.df.loc[-1] = new_row
         self.df.index = self.df.index + 1
