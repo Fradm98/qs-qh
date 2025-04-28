@@ -651,3 +651,59 @@ def array_of_coords_to_tuple(coords):
             return tuple((coords[0] if coords[0] % 1 != 0 else int(coords[0]), coords[1] if coords[1] % 1 != 0 else int(coords[1])))
     except AttributeError:
         raise ValueError("coords is not an array")
+    
+def sort_layouts_by_func(layouts, sort_func):
+    """Sorts the layouts by a function
+    Arguments:
+        layouts:
+            List of layouts to be sorted
+        sort_func:
+            Function to sort the layouts by, 
+            it must take a 2D array of layouts and return a 1D array of costs
+    """
+    if not callable(sort_func):
+        raise ValueError("sort_func must be a callable function")
+    try:
+        layouts = np.array(layouts, dtype=int)
+        if layouts.ndim != 2:
+            raise ValueError("Layouts must be a 2D array")
+    except ValueError:
+        raise ValueError("Layouts must be a 2D array")
+    if np.sum(np.unique(layouts, axis=1) != layouts):
+        raise ValueError("Layouts must be a 2D array with unique integer columns")
+    try:
+        costs = sort_func(layouts)
+    except ValueError:
+        raise ValueError("sort_func must take a 2D array as input and return a 1D array of costs")
+    reorder_mask = np.argsort(costs)
+    return layouts[reorder_mask, :]
+
+def measurement_decoherence_layout_cost(layouts, backend):
+    """Returns the cost of layouts based on T1/T1 decoherence times and measurement errors
+    Arguments:
+        layouts:
+            List of layouts to be sorted
+        backend:
+            Device backend
+    """
+    t1s = np.array([qubitprops[0].value for qubitprops in backend.properties().qubits])
+    t2s = np.array([qubitprops[1].value for qubitprops in backend.properties().qubits])
+    readout_errors = np.array([qubitprops[2].value for qubitprops in backend.properties().qubits])
+    each_qb_t1 = t1s[layouts]
+    each_qb_t2 = t2s[layouts]
+    each_qb_readout = readout_errors[layouts]
+    connection_errors = []
+    for i, layout in enumerate(layouts):
+        this_cz_gate_errors = []
+        for gate in backend.properties().gates:
+            if gate.gate == "cz" and (gate.qubits[0] in layout) and (gate.qubits[1] in layout):
+                this_error = gate.parameters[0].value
+                this_cz_gate_errors.append(gate.parameters[0].value)
+        connection_errors.append(this_cz_gate_errors)
+    connection_errors = np.array(connection_errors)
+    t1_costs = np.mean((np.max(t1s) - each_qb_t1)/(np.max(t1s) - np.min(t1s)), axis=1)
+    t2_costs = np.mean((np.max(t2s) - each_qb_t2)/(np.max(t2s) - np.min(t2s)), axis=1)
+    readout_costs = np.mean((each_qb_readout - np.min(readout_errors))/(np.max(readout_errors) - np.min(readout_errors)), axis=1)
+    zero_connection_costs_mask = ~np.isclose(connection_errors, 0)
+    connection_costs = np.mean((connection_errors[zero_connection_costs_mask] - np.min(connection_errors[zero_connection_costs_mask]))/(np.max(connection_errors[zero_connection_costs_mask]) - np.min(connection_errors[zero_connection_costs_mask])))
+    return t1_costs + t2_costs + readout_costs + connection_costs
