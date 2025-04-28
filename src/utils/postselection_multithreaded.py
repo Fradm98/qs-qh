@@ -727,8 +727,8 @@ def execute_postselected_sampler_batch(backend, sampler_opt_dict, transpiled_cir
             else:
                 this_options["default_shots"] = max_shots
             sampler_options_per_sim.append(this_options)
-        if last_rep_shots == 0 and len(sampler_options_per_sim) != nrepetitions:
-            sampler_options_per_sim.pop()
+        # if last_rep_shots == 0 and len(sampler_options_per_sim) != nrepetitions:
+        #     sampler_options_per_sim.pop()
     else:
         nrepetitions = 1
         edited_sampler_options = sampler_opt_dict.copy()
@@ -1003,7 +1003,7 @@ def multiprocess_nrepetitions_combine_samples_dicts(samples_dicts, transpiled_ci
     for i_layout in range(transpiled_circuits_shape[0]):
         this_layout_samples = []
         for i_circ in range(transpiled_circuits_shape[1]):
-            this_layout_samples.append(samples_dicts[i_layout, i_circ::transpiled_circuits_shape[1]])
+            this_layout_samples.append(samples_dicts[i_layout, nrepetitions*i_circ:nrepetitions*(i_circ+1)])
         grouped_samples_dicts.append(tuple(this_layout_samples))
     grouped_samples_dicts = np.array(grouped_samples_dicts, dtype=object)
     grouped_samples_dicts = grouped_samples_dicts.reshape((-1, grouped_samples_dicts.shape[-1]))
@@ -1306,9 +1306,9 @@ def load_postselected_jobs_obs(job_db, ibmq_service, sampler_opt_dict, transpile
     if nrepetitions > 1:
         real_samples_dicts = multiprocess_nrepetitions_combine_samples_dicts(real_samples_dicts, transpiled_circuits.shape, nrepetitions)
         postselected_real_samples_dicts = multiprocess_nrepetitions_combine_samples_dicts(postselected_real_samples_dicts, transpiled_circuits.shape, nrepetitions)
-        if odr_circuits is not None:
-            odr_samples_dicts = multiprocess_nrepetitions_combine_samples_dicts(odr_samples_dicts, transpiled_circuits.shape, nrepetitions)
-            postselected_odr_samples_dicts = multiprocess_nrepetitions_combine_samples_dicts(postselected_odr_samples_dicts, transpiled_circuits.shape, nrepetitions)
+        # if odr_circuits is not None:
+        #     odr_samples_dicts = multiprocess_nrepetitions_combine_samples_dicts(odr_samples_dicts, transpiled_circuits.shape, nrepetitions)
+        #     postselected_odr_samples_dicts = multiprocess_nrepetitions_combine_samples_dicts(postselected_odr_samples_dicts, transpiled_circuits.shape, nrepetitions)
 
     # Combine samples dicts from different layouts
     combined_real_samples_dicts = multiprocess_layouts_combine_samples_dicts(real_samples_dicts)
