@@ -255,7 +255,7 @@ def plot_circuit_arr_depth(circuit_arr, x_ticks=None, x_label=None, filepath="")
     plt.show()
     plt.rcdefaults()
 
-def plot_individual_qubits_observable_evolution(observable_matrix, observable_confidence_matrix=None, function_over=None, ylabel=None, cmap=None, x_ticks=None, x_label=None, y_lim=None, markers=None, funclabels=None, title="", legend=True, filepath=None):
+def plot_individual_qubits_observable_evolution(observable_matrix, observable_confidence_matrix=None, function_over=None, ylabel=None, cmap=None, x_ticks=None, x_label=None, y_lim=None, markers=None, funclabels=None, title="", legend=True, legend_fontsize=None, filepath=None):
     observable_matrix = np.array(observable_matrix)
     if observable_confidence_matrix is not None:
         observable_confidence_matrix = np.array(observable_confidence_matrix)
@@ -263,7 +263,7 @@ def plot_individual_qubits_observable_evolution(observable_matrix, observable_co
             raise ValueError("Observable matrix and standard deviation matrix must have the same shape")
     if funclabels is not None:
         try:
-            if len(funclabels) != observable_matrix.shape[1]:
+            if len(funclabels) != (observable_matrix.shape[1] + (1 if function_over is not None else 0)):
                 raise ValueError("funclabels must have the same length as the number of qubits")
         except TypeError:
             raise ValueError("funclabels must have the same length as the number of qubits")
@@ -288,23 +288,36 @@ def plot_individual_qubits_observable_evolution(observable_matrix, observable_co
         color = cmap((i % 8))
         y = observable_matrix[:, i]
         if observable_confidence_matrix is not None:
-            minus_error = y - observable_confidence_matrix[:, i, 1]
-            plus_error = observable_confidence_matrix[:, i, 0] - y
-            yerr = np.array([minus_error, plus_error])
-            plt.errorbar(x, y, yerr=yerr, fmt="--", marker=markers[i] if markers is not None else "o", markersize=10, elinewidth=2, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}")
+            upper_error_bound_mask = np.less(y.reshape((len(y), 1)), observable_confidence_matrix[:, i, :])
+            lower_error_bound_mask = np.greater(y.reshape((len(y), 1)), observable_confidence_matrix[:, i, :])
+            consistency_mask = ~np.logical_xor(np.sum(upper_error_bound_mask, axis=1) == 0, np.sum(lower_error_bound_mask, axis=1) == 0)
+            upper_error = observable_confidence_matrix[:, i, 1][consistency_mask] - y[consistency_mask]
+            lower_error = y[consistency_mask] - observable_confidence_matrix[:, i, 0][consistency_mask]
+            yerr = np.zeros_like(upper_error_bound_mask, dtype=float)
+            yerr[consistency_mask, 0] = lower_error
+            yerr[consistency_mask, 1] = upper_error
+            plt.errorbar(x, y, yerr=yerr.T, fmt="--", marker=markers[i] if markers is not None else "o", markersize=10, elinewidth=2, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}", capsize=5, capthick=2)
         else:
             plt.plot(x, y, "--", marker=markers[i] if markers is not None else "o", markersize=10, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}")
     if function_over is not None:
-        plt.plot(x, function_over(x), "--", color=cmap(((i+1) % 8)), label=funclabels[i+1] if funclabels is not None else f"Function")
+        if callable(function_over):
+            plt.plot(x, function_over(x), "-", color=cmap(((i+1) % 8)), label=funclabels[i+1] if funclabels is not None else f"Function", linewidth=2.5)
+        else:
+            x_func = np.linspace(x[0], x[-1], len(function_over))
+            plt.plot(x_func, function_over, "-", color=cmap(((i+1) % 8)), label=funclabels[i+1] if funclabels is not None else f"Function", linewidth=2.5)
     plt.xlabel(x_label)
     plt.ylabel(ylabel, labelpad=10)
     plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
-    if y_lim is not None:
+    if y_lim == "data":
+        min_data = np.nanmin(observable_matrix)
+        max_data = np.nanmax(observable_matrix)
+        plt.ylim([min_data - 0.05*(max_data - min_data), max_data + 0.05*(max_data - min_data)])
+    elif y_lim is not None:
         plt.ylim(y_lim)
     if title:
         plt.title(title, pad=10)
     plt.tight_layout()
-    if legend: plt.legend(loc="best", fontsize=16)
+    if legend: plt.legend(loc="best", fontsize=16 if legend_fontsize is None else legend_fontsize)
     if filepath:
         plt.savefig(filepath, dpi=300, facecolor="none")
     plt.show()
@@ -526,9 +539,13 @@ def plot_max_deviation(observable_matrices_1, observable_matrices_2, x_ticks=Non
     plt.show()
     plt.rcdefaults()
 
-def plot_individual_qubits_htn_comparison(observable_matrix_hardware, observable_matrix_tn, qubit_indices, x_ticks=None, x_label=None, y_label=None, y_lim=None, labels=None, cmap=None, title="", legend=None, filepath=None):
+def plot_individual_qubits_htn_comparison(observable_matrix_hardware, observable_matrix_tn, qubit_indices, observable_confidence_hardware=None, x_ticks=None, x_label=None, y_label=None, y_lim=None, labels=None, cmap=None, title="", legend=None, filepath=None):
     observable_matrix_hardware = np.array(observable_matrix_hardware)[:, qubit_indices]
     observable_matrix_tn = np.array(observable_matrix_tn)[:, qubit_indices]
+    if observable_confidence_hardware is not None:
+        observable_confidence_hardware = np.array(observable_confidence_hardware)[:, qubit_indices, :]
+        if observable_matrix_hardware.shape != observable_confidence_hardware.shape[:-1]:
+            raise ValueError("Observable matrix and standard deviation matrix must have the same shape")
     
     if labels is not None:
         if len(labels) != observable_matrix_hardware.shape[0]:
@@ -556,8 +573,16 @@ def plot_individual_qubits_htn_comparison(observable_matrix_hardware, observable
 
     for i in range(observable_matrix_hardware.shape[1]):
         color = cmap((i % 8))
-        plt.plot(x_tn, observable_matrix_tn[:, i], "-", markersize=10, markeredgecolor="black", color=color, label=labels[1], linewidth=2)
-        plt.plot(x_hardware, observable_matrix_hardware[:, i], "o", markersize=10,  markeredgecolor="black", color=color, label=labels[0])
+        plt.plot(x_tn, observable_matrix_tn[:, i], "-", markersize=10, markeredgecolor="black", color=color, label=labels[1], linewidth=2.5)
+        if observable_confidence_hardware is not None:
+            upper_error_bound_mask = np.less(observable_matrix_hardware[:, i].reshape((-1, 1)), observable_confidence_hardware[:, i, :])
+            lower_error_bound_mask = np.greater(observable_matrix_hardware[:, i].reshape((-1, 1)), observable_confidence_hardware[:, i, :])
+            upper_error = observable_confidence_hardware[:, i, :][upper_error_bound_mask] - observable_matrix_hardware[:, i]
+            lower_error = observable_matrix_hardware[:, i] - observable_confidence_hardware[:, i, :][lower_error_bound_mask]
+            yerr = np.array([lower_error, upper_error])
+            plt.errorbar(x_hardware, observable_matrix_hardware[:, i], yerr=yerr, fmt="o", markersize=10, elinewidth=2, markeredgecolor="black", color=color, label=labels[0], capsize=5, capthick=2)
+        else:
+            plt.plot(x_hardware, observable_matrix_hardware[:, i], "o", markersize=10,  markeredgecolor="black", color=color, label=labels[0])
     
     plt.xlabel(x_label)
     plt.ylabel(y_label, labelpad=10)
