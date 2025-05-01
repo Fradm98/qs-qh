@@ -4,7 +4,6 @@
 #         https://arxiv.org/abs/2501.01953          #
 # ------------------------------------------------- #
 
-from utils.misc import starmap_with_progress
 from multiprocessing import Pool, cpu_count
 from qiskit.result import QuasiDistribution
 from sympy import fwht, ifwht
