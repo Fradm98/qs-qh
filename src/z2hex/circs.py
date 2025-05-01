@@ -384,3 +384,14 @@ def simulation_and_odr_circuits(lattice, Js, hs, lambdas, string_qubits, final_t
     odr_circuits = odr_compuncomp_circuits_dt(lattice, Js, hs, lambdas, final_time, dt, steps, backend, optimization_level, g_func, None, layouts, x_basis, barriers)
     np.random.seed()
     return simulation_circuits, odr_circuits
+
+def simulation_and_odr_circuits_2t(lattice, Js, hs, lambdas, string_qubits, final_time, dt, steps, backend, optimization_level, g_func=None, layouts=None, x_basis=False, force_even=True, barriers=False):
+    seed = np.random.randint(100000)
+    np.random.seed(seed)
+    simulation_circuits = string_quench_simulation_circuits_dt(lattice, Js, hs, lambdas, string_qubits, final_time, dt, steps, backend, optimization_level, g_func, layouts, x_basis, force_even, barriers)
+    np.random.seed(seed)
+    if layouts is None:
+        layouts = [simulation_circuits[0][1].layout.final_index_layout()]
+    odr_circuits = odr_compuncomp_circuits_dt(lattice, Js, hs, lambdas, 2*final_time, dt, steps, backend, optimization_level, g_func, None, layouts, x_basis, barriers)
+    np.random.seed()
+    return simulation_circuits, odr_circuits
