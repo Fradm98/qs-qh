@@ -47,7 +47,7 @@ def convert_jobs_to_site_gauge_matrix(jobs_arr):
             if not first_success_job.in_final_state() and type(first_success_job) is not PrimitiveJob:
                 raise TimeoutError("Some jobs are still to be finished")
             else:
-                first_success_result = first_success_job.result()[0].data.evs[::-1]
+                first_success_result = first_success_job.result()[0].data.evs
             site_gauge_observable_matrix = np.full((len(jobs_arr), len(first_success_result)), np.nan)
             break
         except:
@@ -57,14 +57,15 @@ def convert_jobs_to_site_gauge_matrix(jobs_arr):
             print(f"{str(first_success_index).ljust(6)}| {jobs_arr[first_success_index].job_id()}")
             first_success_index += 1
             continue
-    site_gauge_observable_matrix[first_success_index] = (1 - first_success_result[::-1])/2
+    # site_gauge_observable_matrix[first_success_index] = (1 - first_success_result[::-1])/2
+    site_gauge_observable_matrix[first_success_index] = first_success_result
     for i, job in enumerate(jobs_arr[first_success_index::], start=first_success_index):
         try:
             if not job.in_final_state() and type(first_success_job) is not PrimitiveJob:
                 raise TimeoutError("Some jobs are still to be finished")
             else:
-                this_job_result = job.result()[0].data.evs[::-1]
-            site_gauge_observable_matrix[i] = (1 - this_job_result)/2
+                this_job_result = job.result()[0].data.evs
+            site_gauge_observable_matrix[i] = this_job_result
         except:
             if not printed_warning_header: 
                 print("WARNING: Some jobs failed, the plot will be incomplete\nFAILED JOBS\nIndex | ID")
@@ -587,12 +588,66 @@ def plot_individual_qubits_htn_comparison(observable_matrix_hardware, observable
     plt.xlabel(x_label)
     plt.ylabel(y_label, labelpad=10)
     plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
-    if y_lim is not None:
+    if y_lim == "data":
+        min_data = np.nanmin(observable_matrix_hardware)
+        max_data = np.nanmax(observable_matrix_hardware)
+        plt.ylim([min_data - 0.05*(max_data - min_data), max_data + 0.05*(max_data - min_data)])
+    elif y_lim is not None:
         plt.ylim(y_lim)
     if title:
         plt.title(title, pad=10)
     plt.tight_layout()
     if legend:
+        plt.legend(loc="best", fontsize=12)
+    if filepath:
+        plt.savefig(filepath, dpi=300, facecolor="none")
+    plt.show()
+    plt.rcdefaults()
+
+def plot_discarded_samples(postselected_samples_dicts, samples_dicts, x_ticks=None, x_label=None, labels=None, cmap=None, title="", filepath=None):
+    postselected_samples_dicts = np.array(postselected_samples_dicts, dtype=object)
+    samples_dicts = np.array(samples_dicts, dtype=object)
+
+    if postselected_samples_dicts.shape != samples_dicts.shape:
+        raise ValueError("postselected_samples_dicts and samples_dicts must have the same shape")
+    
+    if len(postselected_samples_dicts.shape) == 1:
+        postselected_samples_dicts = postselected_samples_dicts[None]
+        samples_dicts = samples_dicts[None]
+    elif len(postselected_samples_dicts.shape) > 2:
+        raise ValueError("postselected_samples_dicts and samples_dicts must be 1D or 2D arrays")
+    
+    if labels is not None:
+        if len(labels) != postselected_samples_dicts.shape[0]:
+            raise ValueError("labels must have the same length as number of observable")
+    
+    if cmap is None:
+        cmap = plt.get_cmap("Set2")
+    plt.rc("text", usetex=True)
+    plt.rc("font", size=20, family="serif", weight="bold")
+    fig, ax = plt.subplots(figsize=[9, 6])
+
+    if x_ticks is not None:
+        if len(np.array(x_ticks).shape) > 1:
+            raise ValueError("x_ticks must be 1D array")
+        x = np.linspace(x_ticks[0], x_ticks[-1], postselected_samples_dicts.shape[1])
+    else:
+        x = np.arange(postselected_samples_dicts.shape[1])
+
+    for i in range(postselected_samples_dicts.shape[0]):
+        color = cmap((i % 8)/8)
+        nsamples_og = np.array([sum(sd.values()) for sd in samples_dicts[i]])
+        nsamples_ps = np.array([sum(sd.values()) for sd in postselected_samples_dicts[i]])
+        ratio = nsamples_ps/nsamples_og
+        plt.plot(x, ratio, "o--", markersize=12, markeredgecolor="black", color=color, label=labels[i] if labels is not None else None)
+    
+    plt.xlabel(x_label)
+    plt.ylabel(r"$n_{\mathrm{post}}/n_{\mathrm{original}}$", labelpad=10)
+    plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
+    if title:
+        plt.title(title, pad=10)
+    plt.tight_layout()
+    if labels is not None:
         plt.legend(loc="best", fontsize=12)
     if filepath:
         plt.savefig(filepath, dpi=300, facecolor="none")
