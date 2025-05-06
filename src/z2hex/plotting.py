@@ -1,5 +1,5 @@
 from qiskit.primitives.base.base_primitive_job import BasePrimitiveJob
-from utils.plotting import convert_jobs_to_site_gauge_matrix
+from utils.plotting import best_text_color
 from qiskit.primitives.primitive_job import PrimitiveJob
 from qiskit_ibm_runtime.runtime_job import RuntimeJob
 from z2hex.geometry import is_edge_coords
@@ -16,7 +16,7 @@ def truncate_colormap(cmap, minval=0.0, maxval=1.0, n=100):
         cmap(np.linspace(minval, maxval, n)))
     return new_cmap
 
-def local_observable_plot(site_gauge_matrix_observable_arr, lattice, title=None, scale=1.5, dark_theme=False, cmap_range=None, filepath=""):
+def local_observable_plot(site_gauge_matrix_observable_arr, lattice, title=None, scale=1.5, dark_theme=False, cmap_matter=None, cmap_gauge=None, cmap_range_matter=[0, 1], cmap_range_gauge=[-1, 1], cmap_label_matter=None, cmap_label_gauge=None, facecolor=None, filepath=""):
     plt.rc("text", usetex=True)
     plt.rc("font", size=24, family="serif", weight="bold")
 
@@ -26,21 +26,34 @@ def local_observable_plot(site_gauge_matrix_observable_arr, lattice, title=None,
     is_edge_coords_arr = is_edge_coords(all_coords)
 
     if dark_theme:
-        facecolor = "#373737"
-        cmap = plt.get_cmap("inferno")
+        if facecolor is None: facecolor = "#373737"
+        if cmap_matter is None:
+            cmap_matter = plt.get_cmap("inferno")
+        if cmap_gauge is None:
+            cmap_gauge = plt.get_cmap("inferno")
     else:
-        facecolor = "white"
-        cmap = truncate_colormap(plt.get_cmap("winter"), 0.4, 1)
+        if facecolor is None: facecolor = "white"
+        if cmap_matter is None:
+            cmap_matter = truncate_colormap(plt.get_cmap("winter"), 0.4, 1)
+        if cmap_gauge is None:
+            cmap_matter = truncate_colormap(plt.get_cmap("winter"), 0.4, 1)
 
     fig, ax = plt.subplots(figsize=[(scale + 0.5)*lattice.max_x, scale*lattice.max_y], facecolor=facecolor)
     ax.set_aspect('equal')
-    if cmap_range is None:
-        vmin = np.min(site_gauge_matrix_observable_arr)
-        vmax = np.max(site_gauge_matrix_observable_arr)
+    if cmap_range_matter is None:
+        vmin_matter = np.min(site_gauge_matrix_observable_arr)
+        vmax_matter = np.max(site_gauge_matrix_observable_arr)
     else:
-        vmin, vmax = cmap_range
-    mid_color_range = (vmax + vmin)/2
-    scalar_mappable = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax))
+        vmin_matter, vmax_matter = cmap_range_matter
+    if cmap_range_gauge is None:
+        vmin_gauge = np.min(site_gauge_matrix_observable_arr)
+        vmax_gauge = np.max(site_gauge_matrix_observable_arr)
+    else:
+        vmin_gauge, vmax_gauge = cmap_range_gauge
+    mid_color_range_matter = (vmax_matter + vmin_matter)/2
+    mid_color_range_gauge = (vmax_gauge + vmin_gauge)/2
+    scalar_mappable_matter = plt.cm.ScalarMappable(cmap=cmap_matter, norm=plt.Normalize(vmin=vmin_matter, vmax=vmax_matter))
+    scalar_mappable_gauge = plt.cm.ScalarMappable(cmap=cmap_gauge, norm=plt.Normalize(vmin=vmin_gauge, vmax=vmax_gauge))
     tdowntransform = mpl.transforms.Affine2D().translate(0, -1*scale)
     trighttransform = mpl.transforms.Affine2D().translate(0.035*scale, 0)
     for i, (y, x) in enumerate(all_coords):
@@ -49,12 +62,13 @@ def local_observable_plot(site_gauge_matrix_observable_arr, lattice, title=None,
             this_edge_endpoints_y = (lattice.max_y - np.floor(y), lattice.max_y - np.ceil(y))
             this_edge_box_x, this_edge_box_y = np.mean([this_edge_endpoints_x, this_edge_endpoints_y], axis=1)
             this_norm_data = site_gauge_matrix_observable_arr[i]
-            if (cmap_range[0] - 0.5*(cmap_range[1] - cmap_range[0])) <= this_norm_data <= (cmap_range[1] + 0.5*(cmap_range[1] - cmap_range[0])):
-                this_edge_color = scalar_mappable.to_rgba(this_norm_data)
-                text_color = "black" if this_norm_data > mid_color_range else "white"
+            if (cmap_range_gauge[0] - 0.5*(cmap_range_gauge[1] - cmap_range_gauge[0])) <= this_norm_data <= (cmap_range_gauge[1] + 0.5*(cmap_range_gauge[1] - cmap_range_gauge[0])):
+                this_edge_color = scalar_mappable_gauge.to_rgba(this_norm_data)
+                # text_color = "black" if this_norm_data > mid_color_range_gauge else "white"
             else:
-                this_edge_color = "dodgerblue" if dark_theme else "salmon"
-                text_color = "black"
+                this_edge_color = mpl.colors.to_rgba("dodgerblue" if dark_theme else "salmon")
+                # text_color = "black"
+            text_color = best_text_color(*this_edge_color)
             plt.plot(this_edge_endpoints_x, this_edge_endpoints_y, color="black", linewidth=7*scale)
             plt.plot(this_edge_endpoints_x, this_edge_endpoints_y, color=this_edge_color, linewidth=6*scale)
             plt.scatter(this_edge_box_x, this_edge_box_y, 400*scale, marker=(4, 0, 45), color=this_edge_color, edgecolors="black", zorder=2)
@@ -62,27 +76,36 @@ def local_observable_plot(site_gauge_matrix_observable_arr, lattice, title=None,
         else:
             vertex_x, vertex_y = x, lattice.max_y - y
             this_norm_data = site_gauge_matrix_observable_arr[i]
-            if (cmap_range[0] - 0.5*(cmap_range[1] - cmap_range[0])) <= this_norm_data <= (cmap_range[1] + 0.5*(cmap_range[1] - cmap_range[0])):
-                this_node_color = scalar_mappable.to_rgba(this_norm_data)
-                text_color = "black" if this_norm_data > mid_color_range else "white"
+            if (cmap_range_matter[0] - 0.5*(cmap_range_matter[1] - cmap_range_matter[0])) <= this_norm_data <= (cmap_range_matter[1] + 0.5*(cmap_range_matter[1] - cmap_range_matter[0])):
+                this_node_color = scalar_mappable_matter.to_rgba(this_norm_data)
+                # text_color = "black" if this_norm_data > mid_color_range_matter else "white"
             else:
-                this_node_color = "dodgerblue" if dark_theme else "salmon"
-                text_color = "black"
+                this_node_color =  mpl.colors.to_rgba("dodgerblue" if dark_theme else "salmon")
+                # text_color = "black"
+            text_color = best_text_color(*this_node_color)
             plt.scatter(vertex_x, vertex_y, 350*scale, marker="o", color=this_node_color, edgecolors="black", zorder=3)
             text = plt.text(vertex_x, vertex_y, f"{site_gauge_matrix_observable_arr[i]:.02f}", c=text_color, horizontalalignment="center", verticalalignment="center", fontdict={"size": 4.5*scale, "family":"serif"})
         text.set_transform(text.get_transform() + tdowntransform + trighttransform)
     plt.axis("off")
     plt.ylim([-0.2, lattice.max_y + 0.2])
-    cax = fig.add_axes([0.85, 0.05, 0.02, 0.9])
-    cax.tick_params(labelsize=15)
-    plt.colorbar(scalar_mappable, cax)
+    cax_matter = fig.add_axes([0.82, 0.05, 0.02, 0.9])
+    cax_matter.tick_params(labelsize=15)
+    plt.colorbar(scalar_mappable_matter, cax_matter)
+    if cmap_label_matter is not None:
+        cax_matter.set_ylabel(cmap_label_matter, fontdict={"size": 15}, labelpad=10)
+    cax_gauge = fig.add_axes([0.15, 0.05, 0.02, 0.9])
+    cax_gauge.tick_params(labelsize=15)
+    plt.colorbar(scalar_mappable_gauge, cax_gauge)
+    if cmap_label_gauge is not None:
+        cax_gauge.set_ylabel(cmap_label_gauge, fontdict={"size": 15}, labelpad=12)
+    cax_gauge.yaxis.set_label_position("left")
     nqbfirstrow = len([coords for coords in lattice.coords if coords[0]==0])
     ax.text(lattice.coords[:nqbfirstrow][nqbfirstrow//2][1], lattice.max_y + 0.5, title, horizontalalignment="center", verticalalignment="center", fontdict={"family":"serif", "size": 15*scale})
     if filepath:
         plt.savefig(filepath, dpi=300, bbox_inches="tight")
     plt.rcdefaults()
 
-def local_obs_anim(site_gauge_observable_matrix, lattice, step_to_title_function=None, filepath="", fps=30, interpolation_frames=0, cmap_range=None, dark_theme=False):
+def local_obs_anim(site_gauge_observable_matrix, lattice, step_to_title_function=None, filepath="", fps=30, interpolation_frames=0, dark_theme=False, cmap_matter=None, cmap_gauge=None, cmap_range_matter=[0, 1], cmap_range_gauge=[-1, 1], cmap_label_matter=None, cmap_label_gauge=None, facecolor=None):
     if len(lattice) != site_gauge_observable_matrix.shape[1]:
         raise ValueError("site_gauge_observable_matrix and lattice do not have the same number of qubits")
     
@@ -100,9 +123,6 @@ def local_obs_anim(site_gauge_observable_matrix, lattice, step_to_title_function
     if step_to_title_function is None:
         step_to_title_function = lambda step: f"Step: {step}"
 
-    if cmap_range is None:
-        cmap_range = [np.min(site_gauge_observable_matrix), np.max(site_gauge_observable_matrix)]
-
     frame_inds = np.arange(site_gauge_observable_matrix.shape[0]*(interpolation_frames + 1)).reshape((site_gauge_observable_matrix.shape[0], interpolation_frames+1))
     filepath_digits = len(str(frame_inds.flatten()[-1]))
     for i, int_step_frames in enumerate(frame_inds[:-1]):
@@ -112,10 +132,10 @@ def local_obs_anim(site_gauge_observable_matrix, lattice, step_to_title_function
             frame_filepath = os.path.join(frames_folder_path, f"{anim_name}_{this_frame:0{filepath_digits}d}.png")
             interpolation_coeff = j / len(int_step_frames)
             interpolation_obs_arr = interpolation_coeff*next_step_obs_arr + (1 - interpolation_coeff)*this_step_obs_arr
-            local_observable_plot(interpolation_obs_arr, lattice, title=step_to_title_function(this_frame), dark_theme=dark_theme, cmap_range=cmap_range, filepath=frame_filepath)
+            local_observable_plot(interpolation_obs_arr, lattice, title=step_to_title_function(this_frame), dark_theme=dark_theme, cmap_matter=cmap_matter, cmap_gauge=cmap_gauge, cmap_range_matter=cmap_range_matter, cmap_range_gauge=cmap_range_gauge, cmap_label_matter=cmap_label_matter, cmap_label_gauge=cmap_label_gauge, facecolor=facecolor, filepath=frame_filepath)
             plt.close()
     frame_filepath = os.path.join(frames_folder_path, f"{anim_name}_{frame_inds[-1][0]:0{filepath_digits}d}.png")
-    local_observable_plot(site_gauge_observable_matrix[-1], lattice, title=step_to_title_function(this_frame), dark_theme=dark_theme, cmap_range=cmap_range, filepath=frame_filepath)
+    local_observable_plot(site_gauge_observable_matrix[-1], lattice, title=step_to_title_function(this_frame), dark_theme=dark_theme, cmap_matter=cmap_matter, cmap_gauge=cmap_gauge, cmap_range_matter=cmap_range_matter, cmap_range_gauge=cmap_range_gauge, cmap_label_matter=cmap_label_matter, cmap_label_gauge=cmap_label_gauge, facecolor=facecolor, filepath=frame_filepath)
     plt.close()
     
     subprocess.run(["ffmpeg", "-framerate", str(fps), "-i", os.path.join(frames_folder_path, f"{anim_name}_%0{filepath_digits}d.png"), "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", filepath])
