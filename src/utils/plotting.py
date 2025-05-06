@@ -575,13 +575,22 @@ def plot_individual_qubits_htn_comparison(observable_matrix_hardware, observable
     for i in range(observable_matrix_hardware.shape[1]):
         color = cmap((i % 8))
         plt.plot(x_tn, observable_matrix_tn[:, i], "-", markersize=10, markeredgecolor="black", color=color, label=labels[1], linewidth=2.5)
+        yh = observable_matrix_hardware[:, i]
         if observable_confidence_hardware is not None:
-            upper_error_bound_mask = np.less(observable_matrix_hardware[:, i].reshape((-1, 1)), observable_confidence_hardware[:, i, :])
-            lower_error_bound_mask = np.greater(observable_matrix_hardware[:, i].reshape((-1, 1)), observable_confidence_hardware[:, i, :])
-            upper_error = observable_confidence_hardware[:, i, :][upper_error_bound_mask] - observable_matrix_hardware[:, i]
-            lower_error = observable_matrix_hardware[:, i] - observable_confidence_hardware[:, i, :][lower_error_bound_mask]
-            yerr = np.array([lower_error, upper_error])
-            plt.errorbar(x_hardware, observable_matrix_hardware[:, i], yerr=yerr, fmt="o", markersize=10, elinewidth=2, markeredgecolor="black", color=color, label=labels[0], capsize=5, capthick=2)
+            # upper_error_bound_mask = np.less(observable_matrix_hardware[:, i].reshape((-1, 1)), observable_confidence_hardware[:, i, :])
+            # lower_error_bound_mask = np.greater(observable_matrix_hardware[:, i].reshape((-1, 1)), observable_confidence_hardware[:, i, :])
+            # upper_error = observable_confidence_hardware[:, i, :][upper_error_bound_mask] - observable_matrix_hardware[:, i]
+            # lower_error = observable_matrix_hardware[:, i] - observable_confidence_hardware[:, i, :][lower_error_bound_mask]
+            # yerr = np.array([lower_error, upper_error])
+            upper_error_bound_mask = np.less(yh.reshape((len(yh), 1)), observable_confidence_hardware[:, i, :])
+            lower_error_bound_mask = np.greater(yh.reshape((len(yh), 1)), observable_confidence_hardware[:, i, :])
+            consistency_mask = ~np.logical_xor(np.sum(upper_error_bound_mask, axis=1) == 0, np.sum(lower_error_bound_mask, axis=1) == 0)
+            upper_error = observable_confidence_hardware[:, i, 1][consistency_mask] - yh[consistency_mask]
+            lower_error = yh[consistency_mask] - observable_confidence_hardware[:, i, 0][consistency_mask]
+            yerr = np.zeros_like(upper_error_bound_mask, dtype=float)
+            yerr[consistency_mask, 0] = lower_error
+            yerr[consistency_mask, 1] = upper_error
+            plt.errorbar(x_hardware, observable_matrix_hardware[:, i], yerr=yerr.T, fmt="o", markersize=10, elinewidth=2, markeredgecolor="black", color=color, label=labels[0], capsize=5, capthick=2)
         else:
             plt.plot(x_hardware, observable_matrix_hardware[:, i], "o", markersize=10,  markeredgecolor="black", color=color, label=labels[0])
     
@@ -642,7 +651,7 @@ def plot_discarded_samples(postselected_samples_dicts, samples_dicts, x_ticks=No
         plt.plot(x, ratio, "o--", markersize=12, markeredgecolor="black", color=color, label=labels[i] if labels is not None else None)
     
     plt.xlabel(x_label)
-    plt.ylabel(r"$n_{\mathrm{post}}/n_{\mathrm{original}}$", labelpad=10)
+    plt.ylabel(r"$n_{\mathrm{post}}/n_{\mathrm{raw}}$", labelpad=10)
     plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
     if title:
         plt.title(title, pad=10)
