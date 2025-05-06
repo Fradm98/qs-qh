@@ -38,26 +38,36 @@ def x_t_separated_plot(site_gauge_z_matrix, cbar_range_matter=None, cbar_range_g
         site_gauge_z_matrix = convert_jobs_to_site_gauge_matrix(site_gauge_z_matrix)
     else:
         site_gauge_z_matrix = np.array(site_gauge_z_matrix)
-    
-    matter_occupation_matrix = (1 - site_gauge_z_matrix[:, 0::2])/2
-    gauge_z_matrix = site_gauge_z_matrix[:, 1::2]
 
     plt.rc("text", usetex=True)
     plt.rc("font", size=24, family="serif", weight="bold")
+
+    x = np.arange(1, site_gauge_z_matrix.shape[1]+1)
+    if y_ticks is not None:
+        y = np.linspace(y_ticks[0], y_ticks[-1], site_gauge_z_matrix.shape[0])
+    else:
+        y = np.linspace(0, site_gauge_z_matrix.shape[0]-1, site_gauge_z_matrix.shape[0])
+    X, Y = np.meshgrid(x, y)
+    X_matter = X[::-1, 0::2]
+    X_gauge = X[::-1, 1::2]
+    Y_matter = Y[::-1, 0::2]
+    Y_gauge = Y[::-1, 1::2]
+    Z_matter = (1 - site_gauge_z_matrix[::-1, 0::2])/2
+    Z_gauge = site_gauge_z_matrix[::-1, 1::2]
 
     fig, ax = plt.subplots(1, 2, figsize=[12, 8], sharey=True, dpi=300)
 
     aspect = site_gauge_z_matrix.shape[0]/site_gauge_z_matrix.shape[1]/15
 
     if cbar_range_matter is None:
-        imm = ax[0].imshow(matter_occupation_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2)
+        imm = ax[0].pcolormesh(X_matter, Y_matter, Z_matter, cmap="inferno")
     else:
-        imm = ax[0].imshow(matter_occupation_matrix, cmap="inferno", aspect=aspect if aspect > 1/2 else 1/2, vmax=cbar_range_matter[1], vmin=cbar_range_matter[0])
+        imm = ax[0].pcolormesh(X_matter, Y_matter, Z_matter, cmap="inferno", vmax=cbar_range_matter[1], vmin=cbar_range_matter[0])
     
     if cbar_range_gauge is None:
-        img = ax[1].imshow(gauge_z_matrix, cmap="bwr", aspect=aspect if aspect > 1/2 else 1/2)
+        img = ax[1].pcolormesh(X_gauge, Y_gauge, Z_gauge, cmap="bwr")
     else:
-        img = ax[1].imshow(gauge_z_matrix, cmap="bwr", aspect=aspect if aspect > 1/2 else 1/2, vmax=cbar_range_gauge[1], vmin=cbar_range_gauge[0])
+        img = ax[1].pcolormesh(X_gauge, Y_gauge, Z_gauge, cmap="bwr", vmax=cbar_range_gauge[1], vmin=cbar_range_gauge[0])
 
     cbarm = plt.colorbar(imm, ax=ax[0])
     cbarm.ax.set_ylabel(cbar_matter_label, labelpad=10)
@@ -65,18 +75,18 @@ def x_t_separated_plot(site_gauge_z_matrix, cbar_range_matter=None, cbar_range_g
     cbarg = plt.colorbar(img, ax=ax[1])
     cbarg.ax.set_ylabel(cbar_gauge_label, labelpad=10)
 
+    ax[0].invert_yaxis()
+
     ax[0].set_xlabel(r"Matter sites")
     ax[1].set_xlabel(r"Gauge sites")
-    ax[0].set_ylabel("step")
 
-    ax[0].set_xticks(np.round(np.linspace(0, matter_occupation_matrix.shape[1]-1, nxticks)).astype(int), np.round(np.linspace(1, matter_occupation_matrix.shape[1], nxticks)).astype(int))
-    gauge_ticks_location = np.round(np.linspace(0, gauge_z_matrix.shape[1]-1, nxticks)).astype(int)
-    ax[1].set_xticks(gauge_ticks_location, [f"({g+1}, {g+2})" for g in gauge_ticks_location])
+    ax[0].set_xticks(np.arange(1, site_gauge_z_matrix.shape[1]+1, 2*int(site_gauge_z_matrix.shape[1]/nxticks)))
+    ax[1].set_xticks(np.arange(2, site_gauge_z_matrix.shape[1]+1, 2*int(site_gauge_z_matrix.shape[1]/nxticks)))
 
     if ylabel is not None:
         ax[0].set_ylabel(ylabel)
     if y_ticks is not None:
-        ax[0].set_yticks(*y_ticks)
+        ax[0].set_yticks(y_ticks)
 
     # plt.suptitle(r"Particle \& Gauge occupation", horizontalalignment="center")
 
@@ -354,3 +364,92 @@ def plot_string_observables(
             plt.legend(fontsize=12)
             plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
             plt.show()
+
+def x_t_separated_plot_htn_comparison(observable_matrix_hardware, observable_matrix_tn, cbar_range_matter=[0, 1], cbar_range_gauge=[-1, 1], nxticks=5, y_ticks=None, ylabel=None, cbar_matter_label=r"$(1 - \langle Z \rangle)/2$", cbar_gauge_label=r"$\langle Z \rangle$", filepath=""):
+    if isinstance(observable_matrix_hardware[0], BasePrimitiveJob) or isinstance(observable_matrix_hardware[0], RuntimeJob):
+        observable_matrix_hardware = convert_jobs_to_site_gauge_matrix(observable_matrix_hardware)
+    else:
+        observable_matrix_hardware = np.array(observable_matrix_hardware)
+    
+    observable_matrix_tn = np.array(observable_matrix_tn)
+    if observable_matrix_hardware.shape[1] != observable_matrix_tn.shape[1]:
+        raise ValueError("observable_matrix_hardware and observable_matrix_tn must contain the same number of observables")
+    
+    plt.rc("text", usetex=True)
+    plt.rc("font", size=24, family="serif", weight="bold")
+
+    x = np.arange(1, observable_matrix_hardware.shape[1]+1)
+    if y_ticks is not None:
+        yh = np.linspace(y_ticks[0], y_ticks[-1], observable_matrix_hardware.shape[0])
+        ytn = np.linspace(y_ticks[0], y_ticks[-1], observable_matrix_tn.shape[0])
+    else:
+        yh = np.linspace(0, observable_matrix_hardware.shape[0]-1, observable_matrix_hardware.shape[0])
+        ytn = np.linspace(0, observable_matrix_tn.shape[0]-1, observable_matrix_tn.shape[0])
+    Xh, Yh = np.meshgrid(x, yh)
+    Xtn, Ytn = np.meshgrid(x, ytn)
+    Xh_matter = Xh[::-1, 0::2]
+    Xtn_matter = Xtn[::-1, 0::2]
+    Xh_gauge = Xh[::-1, 1::2]
+    Xtn_gauge = Xtn[::-1, 1::2]
+    Yh_matter = Yh[::-1, 0::2]
+    Ytn_matter = Ytn[::-1, 0::2]
+    Yh_gauge = Yh[::-1, 1::2]
+    Ytn_gauge = Ytn[::-1, 1::2]
+    Zh_matter = (1 - observable_matrix_hardware[::-1, 0::2])/2
+    Ztn_matter = (1 - observable_matrix_tn[::-1, 0::2])/2
+    Zh_gauge = observable_matrix_hardware[::-1, 1::2]
+    Ztn_gauge = observable_matrix_tn[::-1, 1::2]
+
+    fig, ax = plt.subplots(2, 2, figsize=[12, 12], sharey=True, dpi=300)
+    
+    if cbar_range_matter is None:
+        immh = ax[0, 0].pcolormesh(Xh_matter, Yh_matter, Zh_matter, cmap="inferno", edgecolors="face")
+        immtn = ax[1, 0].pcolormesh(Xtn_matter, Ytn_matter, Ztn_matter, cmap="inferno")
+    else:
+        immh = ax[0, 0].pcolormesh(Xh_matter, Yh_matter, Zh_matter, cmap="inferno", vmax=cbar_range_matter[1], vmin=cbar_range_matter[0])
+        immtn = ax[1, 0].pcolormesh(Xtn_matter, Ytn_matter, Ztn_matter, cmap="inferno", vmax=cbar_range_matter[1], vmin=cbar_range_matter[0])
+    if cbar_range_gauge is None:
+        imgh = ax[0, 1].pcolormesh(Xh_gauge, Yh_gauge, Zh_gauge, cmap="bwr")
+        imgtn = ax[1, 1].pcolormesh(Xtn_gauge, Ytn_gauge, Ztn_gauge, cmap="bwr")
+    else:
+        imgh = ax[0, 1].pcolormesh(Xh_gauge, Yh_gauge, Zh_gauge, cmap="bwr", vmax=cbar_range_gauge[1], vmin=cbar_range_gauge[0])
+        imgtn = ax[1, 1].pcolormesh(Xtn_gauge, Ytn_gauge, Ztn_gauge, cmap="bwr", vmax=cbar_range_gauge[1], vmin=cbar_range_gauge[0])
+    
+    cbarmh = plt.colorbar(immh, ax=ax[0, 0])
+    cbarmh.ax.set_ylabel(cbar_matter_label, labelpad=10)
+    cbarmtn = plt.colorbar(immtn, ax=ax[1, 0])
+    cbarmtn.ax.set_ylabel(cbar_matter_label, labelpad=10)
+
+    cbargh = plt.colorbar(imgh, ax=ax[0, 1])
+    cbargh.ax.set_ylabel(cbar_gauge_label, labelpad=10)
+    cbargtn = plt.colorbar(imgtn, ax=ax[1, 1])
+    cbargtn.ax.set_ylabel(cbar_gauge_label, labelpad=10)
+
+    ax[0, 0].set_title("Hardware")
+    ax[1, 0].set_title("TN")
+
+    ax[1, 0].set_xlabel(r"Matter sites")
+    ax[1, 1].set_xlabel(r"Gauge sites")
+    ax[0, 0].set_xticks(x[::2], [""]*len(x[::2]))
+    ax[1, 0].set_xticks(x[::2], np.arange(1, x[::2].shape[0]+1))
+    ax[0, 1].set_xticks(x[1::2], [""]*len(x[1::2]))
+    ax[1, 1].set_xticks(x[1::2], np.arange(1, x[1::2].shape[0]+1)+0.5)
+
+    ax[0, 0].invert_yaxis()
+
+    if ylabel is not None:
+        ax[0, 0].set_ylabel(ylabel)
+        ax[1, 0].set_ylabel(ylabel)
+    if y_ticks is not None:
+        ax[0, 0].set_yticks(y_ticks)
+        ax[1, 0].set_yticks(y_ticks)
+        ax[0, 1].set_yticks(y_ticks)
+        ax[1, 1].set_yticks(y_ticks)
+
+    if filepath:
+        plt.savefig(filepath, dpi=300)
+    plt.show()
+    plt.rcdefaults()
+
+def x_t_plot_htn_matter_comparison():
+    pass
