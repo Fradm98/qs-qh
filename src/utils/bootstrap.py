@@ -10,8 +10,13 @@ def bootstrap_sample_dict_mean(samples_dict, string_expectation_values, confiden
     observables_eigenvalues_counts = np.zeros((2, string_expectation_values.shape[1]), dtype=int)
     string_counts = np.array(list(samples_dict.values()))
     total_string_counts = np.sum(string_counts)
+    unique_expectation_values = np.unique(string_expectation_values)
+    if len(unique_expectation_values) == 1:
+        return np.repeat([[unique_expectation_values[0], unique_expectation_values[0]]], string_expectation_values.shape[1], axis=0)
+    elif len(unique_expectation_values) != 2:
+        raise ValueError("string_expectation_values must be a 2D array with two unique values")
     for i in range(string_expectation_values.shape[1]):
-        observables_eigenvalues_counts[0, i] = np.sum(string_counts[np.equal(string_expectation_values[:, i], 1)])
+        observables_eigenvalues_counts[0, i] = np.sum(string_counts[np.equal(string_expectation_values[:, i], unique_expectation_values[0])])
         observables_eigenvalues_counts[1, i] = total_string_counts - observables_eigenvalues_counts[0, i]
     
     confidence_intervals = []
@@ -21,14 +26,17 @@ def bootstrap_sample_dict_mean(samples_dict, string_expectation_values, confiden
         bootstrap_set = np.zeros(n_resamples)
         for j in range(n_resamples):
             this_batch_size = n_resamples - j
-            bootstrap_set[j] = np.mean(np.random.choice([1, -1], p=[observables_eigenvalues_counts[0, i] / total_string_counts, observables_eigenvalues_counts[1, i] / total_string_counts], size=this_batch_size, replace=True))
+            bootstrap_set[j] = np.mean(np.random.choice(unique_expectation_values, p=[observables_eigenvalues_counts[0, i] / total_string_counts, observables_eigenvalues_counts[1, i] / total_string_counts], size=this_batch_size, replace=True))
         
         # Calculate percentile interval
         alpha = (1 - confidence)/2
 
         # Correct for bias and acceleration
-        original_expectation_value = (observables_eigenvalues_counts[0, i] - observables_eigenvalues_counts[1, i]) / total_string_counts
+        original_expectation_value = (observables_eigenvalues_counts[0, i]*unique_expectation_values[0] + observables_eigenvalues_counts[1, i]*unique_expectation_values[1]) / total_string_counts
         percentile = (np.sum(np.less(bootstrap_set, original_expectation_value)) + np.sum(np.less_equal(bootstrap_set, original_expectation_value))) / 2 / n_resamples
+        if percentile == 0 or percentile == 1:
+            confidence_intervals.append((original_expectation_value, original_expectation_value))
+            continue
         z0_hat = sp.special.ndtri(percentile)
 
         jackknife_mean = observables_eigenvalues_counts[0, i]/total_string_counts*(((observables_eigenvalues_counts[0, i]-1) - observables_eigenvalues_counts[1, i]) / total_string_counts) + observables_eigenvalues_counts[1, i]/total_string_counts*((observables_eigenvalues_counts[0, i] - (observables_eigenvalues_counts[1, i]-1)) / total_string_counts)
