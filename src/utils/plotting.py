@@ -256,7 +256,7 @@ def plot_circuit_arr_depth(circuit_arr, x_ticks=None, x_label=None, filepath="")
     plt.show()
     plt.rcdefaults()
 
-def plot_individual_qubits_observable_evolution(observable_matrix, observable_confidence_matrix=None, function_over=None, ylabel=None, cmap=None, x_ticks=None, x_label=None, y_lim=None, markers=None, funclabels=None, title="", legend=True, legend_fontsize=None, filepath=None):
+def plot_individual_qubits_observable_evolution(observable_matrix, observable_confidence_matrix=None, function_over=None, ylabel=None, cmap=None, x_ticks=None, x_label=None, y_lim=None, fmt="", funclabels=None, title="", legend=True, legend_fontsize=None, data_linewidth=1.5, filepath=None):
     observable_matrix = np.array(observable_matrix)
     if observable_confidence_matrix is not None:
         observable_confidence_matrix = np.array(observable_confidence_matrix)
@@ -268,9 +268,6 @@ def plot_individual_qubits_observable_evolution(observable_matrix, observable_co
                 raise ValueError("funclabels must have the same length as the number of qubits")
         except TypeError:
             raise ValueError("funclabels must have the same length as the number of qubits")
-    if markers is not None:
-        if len(markers) != observable_matrix.shape[1]:
-            raise ValueError("markers must have the same length as the number of qubits")
     
     if cmap is None:
         cmap = plt.get_cmap("Set2")
@@ -297,9 +294,9 @@ def plot_individual_qubits_observable_evolution(observable_matrix, observable_co
             yerr = np.zeros_like(upper_error_bound_mask, dtype=float)
             yerr[consistency_mask, 0] = lower_error
             yerr[consistency_mask, 1] = upper_error
-            plt.errorbar(x, y, yerr=yerr.T, fmt="--", marker=markers[i] if markers is not None else "o", markersize=10, elinewidth=2, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}", capsize=5, capthick=2)
+            plt.errorbar(x, y, yerr=yerr.T, fmt="o--" if fmt is None else fmt, markersize=10, linewidth=data_linewidth, elinewidth=2, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}", capsize=5, capthick=2)
         else:
-            plt.plot(x, y, "--", marker=markers[i] if markers is not None else "o", markersize=10, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}")
+            plt.plot(x, y, "o--" if fmt is None else fmt, markersize=10, linewidth=data_linewidth, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}")
     if function_over is not None:
         if callable(function_over):
             plt.plot(x, function_over(x), "-", color=cmap(((i+1) % 8)), label=funclabels[i+1] if funclabels is not None else f"Function", linewidth=2.5)
@@ -658,6 +655,48 @@ def plot_discarded_samples(postselected_samples_dicts, samples_dicts, x_ticks=No
     plt.tight_layout()
     if labels is not None:
         plt.legend(loc="best", fontsize=12)
+    if filepath:
+        plt.savefig(filepath, dpi=300, facecolor="none")
+    plt.show()
+    plt.rcdefaults()
+
+def plot_string_configuration_evolution(samples_dicts, strings_qubits, x_ticks=None, x_label=None, cmap=None, labels=None, title="", filepath=None):
+    samples_dicts = np.array(samples_dicts, dtype=object)
+
+    if len(samples_dicts.shape) > 1:
+        raise ValueError("samples_dicts must be 1D array")
+    if not isinstance(strings_qubits[0], (list, tuple)):
+        strings_qubits = [strings_qubits]
+    
+    if cmap is None:
+        cmap = plt.get_cmap("Set2")
+
+    if x_ticks is not None:
+        if len(np.array(x_ticks).shape) > 1:
+            raise ValueError("x_ticks must be 1D array")
+        x = np.linspace(x_ticks[0], x_ticks[-1], len(samples_dicts))
+    else:
+        x = np.arange(len(samples_dicts))
+
+    plt.rc("text", usetex=True)
+    plt.rc("font", size=20, family="serif", weight="bold")
+    fig, ax = plt.subplots(figsize=[9, 6])
+
+    nqubits = len(list(samples_dicts[0].keys())[0])
+    for i in range(len(strings_qubits)):
+        color = cmap(i % 8)
+        string_string = "".join(["1" if j in strings_qubits[i] else "0" for j in range(nqubits)])
+        string_conf_probabilities = np.array([sd.get(string_string[::-1], 0) / sum(sd.values()) if sum(sd.values()) != 0 else np.nan for sd in samples_dicts], dtype=float)
+        plt.plot(x, string_conf_probabilities, "o--", markersize=12, markeredgecolor="black", color=color, label=labels[i] if labels is not None else None)
+    
+    plt.xlabel(x_label)
+    plt.ylabel(r"$P(\mathrm{string})$", labelpad=10)
+    plt.grid(color="gray", linestyle="dashdot", linewidth=1.6, zorder=0)
+    if title:
+        plt.title(title, pad=10)
+    if labels is not None:
+        plt.legend(loc="best", fontsize=12)
+    plt.tight_layout()
     if filepath:
         plt.savefig(filepath, dpi=300, facecolor="none")
     plt.show()
