@@ -20,6 +20,9 @@ def pauli_pair_x(lattice, qubit_inds):
 def pauli_pair_z(lattice, qubit_inds):
     return chainops.pauli_pair_z(len(lattice), qubit_inds)
 
+def pauli_z_tensor(lattice, qubit_inds):
+    return chainops.pauli_z_tensor(len(lattice), qubit_inds)
+
 def gauge_operator(lattice, node_coords, x_basis=False):
     if node_coords not in lattice.node_coords:
         raise ValueError("Node coords not present in lattice")

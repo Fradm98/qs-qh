@@ -1,4 +1,5 @@
 from qiskit.quantum_info import Pauli, PauliList, SparsePauliOp
+import numpy as np
 
 def local_pauli_z(nqubits, qubit_ind):
     if qubit_ind > nqubits:
@@ -31,6 +32,18 @@ def pauli_pair_z(nqubits, qubit_inds):
     if qubit_ind2 > nqubits:
         raise ValueError("qubit_ind2 must be in the interval [0, nqubits)")
     return Pauli("I"*qubit_ind1 + "Z" + "I"*(qubit_ind2 - qubit_ind1 - 1) + "Z" + "I"*(nqubits - qubit_ind2 - 1))
+
+def pauli_z_tensor(nqubits, qubit_inds):
+    z_mask = np.zeros(nqubits, dtype=bool)
+    try:
+        qubit_inds = np.array(qubit_inds, dtype=int)
+    except (ValueError, TypeError):
+        raise ValueError("qubit_inds must be an array of indices")
+    try:
+        z_mask[qubit_inds] = True
+    except IndexError:
+        raise ValueError("qubit_inds must be in the interval [0, nqubits)")
+    return Pauli((z_mask, np.zeros_like(z_mask, dtype=bool)))
 
 def pauli_pair_x(nqubits, qubit_inds):
     qubit_inds = sorted(qubit_inds) 
