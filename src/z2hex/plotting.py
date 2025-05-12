@@ -16,7 +16,7 @@ def truncate_colormap(cmap, minval=0.0, maxval=1.0, n=100):
         cmap(np.linspace(minval, maxval, n)))
     return new_cmap
 
-def local_observable_plot(site_gauge_matrix_observable_arr, lattice, title=None, scale=1.5, dark_theme=False, cmap_matter=None, cmap_gauge=None, cmap_range_matter=[0, 1], cmap_range_gauge=[-1, 1], cmap_label_matter=None, cmap_label_gauge=None, facecolor=None, filepath=""):
+def local_observable_plot(site_gauge_matrix_observable_arr, lattice, title=None, scale=1.5, dark_theme=False, cmap_matter=None, cmap_gauge=None, cmap_range_matter=[0, 1], cmap_range_gauge=[-1, 1], cmap_label_matter=None, cmap_label_gauge=None, show_text=True, facecolor=None, filepath=""):
     plt.rc("text", usetex=True)
     plt.rc("font", size=24, family="serif", weight="bold")
 
@@ -72,7 +72,7 @@ def local_observable_plot(site_gauge_matrix_observable_arr, lattice, title=None,
             plt.plot(this_edge_endpoints_x, this_edge_endpoints_y, color="black", linewidth=7*scale)
             plt.plot(this_edge_endpoints_x, this_edge_endpoints_y, color=this_edge_color, linewidth=6*scale)
             plt.scatter(this_edge_box_x, this_edge_box_y, 400*scale, marker=(4, 0, 45), color=this_edge_color, edgecolors="black", zorder=2)
-            text = plt.text(this_edge_box_x, this_edge_box_y, f"{site_gauge_matrix_observable_arr[i]:.02f}", color=text_color, horizontalalignment="center", verticalalignment="center", fontdict={"size": 4.5*scale, "family":"serif"})
+            if show_text: text = plt.text(this_edge_box_x, this_edge_box_y, f"{site_gauge_matrix_observable_arr[i]:.02f}", color=text_color, horizontalalignment="center", verticalalignment="center", fontdict={"size": 4.5*scale, "family":"serif"})
         else:
             vertex_x, vertex_y = x, lattice.max_y - y
             this_norm_data = site_gauge_matrix_observable_arr[i]
@@ -84,8 +84,8 @@ def local_observable_plot(site_gauge_matrix_observable_arr, lattice, title=None,
                 # text_color = "black"
             text_color = best_text_color(*this_node_color)
             plt.scatter(vertex_x, vertex_y, 350*scale, marker="o", color=this_node_color, edgecolors="black", zorder=3)
-            text = plt.text(vertex_x, vertex_y, f"{site_gauge_matrix_observable_arr[i]:.02f}", c=text_color, horizontalalignment="center", verticalalignment="center", fontdict={"size": 4.5*scale, "family":"serif"})
-        text.set_transform(text.get_transform() + tdowntransform + trighttransform)
+            if show_text: text = plt.text(vertex_x, vertex_y, f"{site_gauge_matrix_observable_arr[i]:.02f}", c=text_color, horizontalalignment="center", verticalalignment="center", fontdict={"size": 4.5*scale, "family":"serif"})
+        if show_text: text.set_transform(text.get_transform() + tdowntransform + trighttransform)
     plt.axis("off")
     plt.ylim([-0.2, lattice.max_y + 0.2])
     cax_matter = fig.add_axes([0.82, 0.05, 0.02, 0.9])
