@@ -15,8 +15,12 @@ def compute_depolarizing_probability(measured_observable_arr, expected_observabl
     
 def renormalize_observable(measured_observable_arr, p_arr, observable_trace, nqubits, observable_range=None, observable_confidence=None, expected_observable_arr=None, nantol=0.2):
     try:
-        one_mask = np.isclose(p_arr, 1)
-        p_arr[one_mask] = np.nan
+        try:
+            one_mask = np.isclose(p_arr, 1)
+            p_arr[one_mask] = np.nan
+        except TypeError:
+            if one_mask == 1:
+                p_arr = np.nan
         candidate = ((np.array(measured_observable_arr) - np.array(p_arr)*observable_trace/2**nqubits) / (1 - np.array(p_arr))).astype(float)
         if observable_confidence is not None:
             if expected_observable_arr is None:
