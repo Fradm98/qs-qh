@@ -80,7 +80,5 @@ def decode_with_optimized_weights(string_syndromes, postselection_mask):
         p = err_rates[(op,)]
         decoder.add_boundary_edge(op, qubit, weight=math.log((1-p)/p))
 
-    print(err_rates)
-
     predicted_flips = decoder.decode_batch(string_syndromes)
     return predicted_flips
