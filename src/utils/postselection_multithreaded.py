@@ -1,7 +1,8 @@
 from utils.circs import simplify_logical_circuits, count_non_idle_qubits, append_basis_change_circuit, join_transpiled_circuits, numpy_array_of_circuits
+from qiskit_ibm_runtime.exceptions import RuntimeJobFailureError, RuntimeInvalidStateError
 from utils.odr import compute_depolarizing_probability, renormalize_observable
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
-from qiskit_ibm_runtime.exceptions import RuntimeJobFailureError
+from utils.postselection_weights import decode_with_optimized_weights
 from qiskit_ibm_runtime import RuntimeDecoder, RuntimeEncoder
 from utils.bootstrap import bootstrap_sample_dict_mean
 from qiskit.quantum_info import Pauli, PauliList
@@ -987,7 +988,7 @@ def load_job_from_local_or_ibmq(job_id, ibmq_service, jobs_result_folder):
             job_obj = ibmq_service.job(job_id=job_id)
             try:
                 job_result = save_job_result(job_filepath, job_obj)
-            except RuntimeJobFailureError:
+            except (RuntimeJobFailureError, RuntimeInvalidStateError):
                 job_result = None
     else:
         job_obj = ibmq_service.job(job_id=job_id)
@@ -1042,6 +1043,7 @@ def get_recovered_dict_with_basis(samples_dict, postselection_ops, basis, flip_t
     if flipped_syndromes is not None:
         string_syndromes = (string_syndromes + flipped_syndromes) % 2
     predicted_flips = decoder.decode_batch(string_syndromes)
+    # predicted_flips = decode_with_optimized_weights(string_syndromes, postselection_mask)
     npredicted_flips = predicted_flips.sum(axis=1)
     recovered_strings = (strings_arr + predicted_flips) % 2
     nflip_sort_mask = np.argsort(npredicted_flips)
@@ -1059,7 +1061,7 @@ def get_recovered_dict_with_basis(samples_dict, postselection_ops, basis, flip_t
         else:
             recovered_samples_dict[recovered_string] = samples_dict[string]
         added_shots += shots_to_add
-        if npredicted_flips[(i + 1) % len(npredicted_flips)] > flip_threshold:
+        if (flip_threshold is not None) and (npredicted_flips[(i + 1) % len(npredicted_flips)] > flip_threshold):
             if minimum_shots is not None:
                 if added_shots > minimum_shots:
                     break
