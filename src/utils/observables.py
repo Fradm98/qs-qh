@@ -1,100 +1,168 @@
-from utils.odr import compute_depolarizing_probability, renormalize_observable
-from utils.bootstrap import bootstrap_sample_dict_mean
+from utils.postselection_multithreaded import measure_diagonal_observables
+from z2chain.operators import pauli_z_tensor
 from multiprocessing import Pool, cpu_count
-from itertools import product
+from itertools import product, combinations
+import utils.odr as odr
 import numpy as np
 
-def single_load_occupation_correlators(samples_dict, occupied_qubits, confidence=None, shots=None):
-    if not isinstance(occupied_qubits, (list, tuple, np.ndarray)):
-        raise ValueError("occupied_qubits must be a list, tuple, or numpy array")
-    if len(samples_dict) == 0:
+def load_single_occupation_correlators_paulis(samples_dict, occupied_qubits, cal_samples_dict=None, confidence=None, shots=None):
+    # Generate the pauli observable list involved in the correlator
+    try:
+        nqubits_sim = len(list(samples_dict.keys())[0])
+        nqubits_cal = len(list(cal_samples_dict.keys())[0]) if cal_samples_dict is not None else None
+        if nqubits_sim != nqubits_cal:
+            raise ValueError("The number of qubits in the samples_dict and cal_samples_dict must be the same")
+    except IndexError:
+        ncombinations = 2**len(occupied_qubits) - 1
+        nan_evals = np.full(ncombinations, np.nan)
+        nan_confidence = np.full((ncombinations, 2), np.nan)
         if confidence is not None:
-            return np.array(np.nan), np.array([[np.nan, np.nan]])
-        else: 
-            return np.array(np.nan)
-    
-    nqubits = len(list(samples_dict.keys())[0])
-    string_projectors_basis_values = np.zeros(len(samples_dict), dtype=int)
-    qubit_expectation_mask = np.array([qubit in occupied_qubits for qubit in range(nqubits)], dtype=bool)
-    for i, state_string in enumerate(samples_dict.keys()):
-        state_string_rep = np.array([int(c) for c in state_string], dtype=int)[::-1]
-        string_projectors_basis_values[i] = int(np.sum(state_string_rep[qubit_expectation_mask]) == len(occupied_qubits))
-    weights = np.array(list(samples_dict.values()))/np.sum(list(samples_dict.values()))
-    projector_values = np.sum(string_projectors_basis_values * weights)
-    if confidence is not None:
-        if list(samples_dict.values())[0] < 1:
-            if shots is None:
-                raise ValueError("To boostrap a probability dictionary, shots must be provided")
-            bootstrap_samples = {k:int(np.floor(v*shots)) for k, v in samples_dict.items()}
+            if cal_samples_dict is not None:
+                return (nan_evals, nan_evals), (nan_confidence, nan_confidence), nan_evals
+            else:
+                return nan_evals, nan_confidence, nan_evals
         else:
-            bootstrap_samples = samples_dict
-        confidence_intervals = bootstrap_sample_dict_mean(bootstrap_samples, string_projectors_basis_values.reshape((-1, 1)), confidence)
-        return projector_values, confidence_intervals
+            if cal_samples_dict is not None:
+                return (nan_evals, nan_evals), nan_evals
+            else:
+                return nan_evals, nan_evals
+
+    pauli_zs = []
+    signs = []
+    for i in range(1, len(occupied_qubits)+1):
+        these_pauli_zs = []
+        for comb in combinations(occupied_qubits, i):
+            these_pauli_zs.append(pauli_z_tensor(nqubits_sim, comb))
+        signs += [(-1)**i]*len(these_pauli_zs)
+        pauli_zs += these_pauli_zs
+    if confidence is not None:
+        evals, evals_confidence = measure_diagonal_observables(samples_dict, pauli_zs, confidence=confidence)
+        if cal_samples_dict is not None:
+            cal_evals, cal_evals_confidence = measure_diagonal_observables(cal_samples_dict, pauli_zs, confidence=confidence)
+            return (evals, cal_evals), (evals_confidence, cal_evals_confidence), signs
+        else:
+            return evals, evals_confidence, signs
     else:
-        return projector_values
+        evals = measure_diagonal_observables(samples_dict, pauli_zs)
+        if cal_samples_dict is not None:
+            cal_evals = measure_diagonal_observables(cal_samples_dict, pauli_zs)
+            return (evals, cal_evals), signs
+        else:
+            return evals, signs
     
-def load_projection_operators(samples_dicts, strings_qubits, cal_samples_dicts=None, confidence=None, shots=None):
+def _paulis_results_to_occ_corrs(results, occupied_qubits):
+    confidence_present = (len(results[0]) == 3) and isinstance(results[0][0], tuple)
+    cal_present = isinstance(results[0][0], tuple)
+
+    occ_qb_paulisz_evals = []
+    occ_qb_paulisz_signs = []
+    if confidence_present:
+        occ_qb_paulisz_confidence = []
+        if cal_present:
+            cal_occ_qb_paulisz_evals = []
+            cal_occ_qb_paulisz_confidence = []
+            for result in results:
+                occ_qb_paulisz_evals.append(result[0][0])
+                cal_occ_qb_paulisz_evals.append(result[0][1])
+                occ_qb_paulisz_confidence.append(result[1][0])
+                cal_occ_qb_paulisz_confidence.append(result[1][1])
+                occ_qb_paulisz_signs.append(result[-1])
+        else:
+            for result in results:
+                occ_qb_paulisz_evals.append(result[0])
+                occ_qb_paulisz_confidence.append(result[1])
+                occ_qb_paulisz_signs.append(result[-1])
+    else:
+        if cal_present:
+            cal_occ_qb_paulisz_evals = []
+            for result in results:
+                occ_qb_paulisz_evals.append(result[0][0])
+                cal_occ_qb_paulisz_evals.append(result[0][1])
+                occ_qb_paulisz_signs.append(result[-1])
+        else:
+            for result in results:
+                occ_qb_paulisz_evals.append(result[0])
+                occ_qb_paulisz_signs.append(result[-1])
+
+    nsamples_dicts = len(occ_qb_paulisz_evals)//len(occupied_qubits)
+    occupation_correlators_evals = np.zeros((nsamples_dicts, len(occupied_qubits)))
+    if cal_present:
+        cal_occupation_correlators_evals = np.zeros((nsamples_dicts, len(occupied_qubits)))
+        corrected_occupation_correlators_evals = np.zeros((nsamples_dicts, len(occupied_qubits)))
+    if confidence_present:
+        occupation_correlators_confidence = np.zeros((nsamples_dicts, len(occupied_qubits), 2))
+        if cal_present:
+            cal_occupation_correlators_confidence = np.zeros((nsamples_dicts, len(occupied_qubits), 2))
+            corrected_occupation_correlators_confidence = np.zeros((nsamples_dicts, len(occupied_qubits), 2))
+    for i, occ_qb in enumerate(occupied_qubits):
+        this_occ_qb_paulisz_evals = np.array(occ_qb_paulisz_evals[i*nsamples_dicts:(i+1)*nsamples_dicts])
+        this_occ_qb_paulisz_signs = np.array(occ_qb_paulisz_signs[i*nsamples_dicts:(i+1)*nsamples_dicts])
+        occupation_correlators_evals[:, i] = (1 + np.sum(this_occ_qb_paulisz_evals * this_occ_qb_paulisz_signs, axis=1))/2**len(occ_qb)
+        if cal_present:
+            this_cal_occ_qb_paulisz_evals = np.array(cal_occ_qb_paulisz_evals[i*nsamples_dicts:(i+1)*nsamples_dicts])
+            cal_occupation_correlators_evals[:, i] = (1 + np.sum(this_cal_occ_qb_paulisz_evals * this_occ_qb_paulisz_signs, axis=1))/2**len(occ_qb)
+            corrected_pauliz_evals = np.zeros_like(this_occ_qb_paulisz_evals)
+            if confidence_present:
+                this_occ_qb_paulisz_confidence = np.array(occ_qb_paulisz_confidence[i*nsamples_dicts:(i+1)*nsamples_dicts])
+                corrected_pauliz_confidence = np.zeros_like(this_occ_qb_paulisz_confidence)
+            for j in range(this_cal_occ_qb_paulisz_evals.shape[1]):
+                p_arr = odr.compute_depolarizing_probability(this_cal_occ_qb_paulisz_evals[:, j], 1, 0, 0)
+                if confidence_present:
+                    corrected_pauliz_evals[:, j], corrected_pauliz_confidence[:, j, :] = odr.renormalize_observable(this_occ_qb_paulisz_evals[:, j], p_arr, 0, 0, observable_range=[-1, 1], expected_observable_arr=1, observable_confidence=this_occ_qb_paulisz_confidence[:, j, :])
+                else:
+                    corrected_pauliz_evals[:, j] = odr.renormalize_observable(this_occ_qb_paulisz_evals[:, j], p_arr, 0, 0, observable_range=[-1, 1], expected_observable_arr=1)
+            corrected_occupation_correlators_evals[:, i] = (1 + np.nansum(corrected_pauliz_evals * this_occ_qb_paulisz_signs, axis=1))/2**len(occ_qb)
+        if confidence_present:
+            confidence_deltas = np.abs(this_occ_qb_paulisz_confidence - this_occ_qb_paulisz_evals.reshape((*this_occ_qb_paulisz_confidence.shape[:2], 1)))
+            confidence_deltas = np.abs(np.sum(confidence_deltas * this_occ_qb_paulisz_signs.reshape((*this_occ_qb_paulisz_confidence.shape[:2], 1)), axis=1)/2**len(occ_qb))
+            occupation_correlators_confidence[:, i, 0] = occupation_correlators_evals[:, i] - confidence_deltas[:, 0]
+            occupation_correlators_confidence[:, i, 1] = occupation_correlators_evals[:, i] + confidence_deltas[:, 1]
+            if cal_present:
+                this_cal_occ_qb_paulisz_confidence = np.array(cal_occ_qb_paulisz_confidence[i*nsamples_dicts:(i+1)*nsamples_dicts])
+                cal_confidence_deltas = np.abs(this_cal_occ_qb_paulisz_confidence - this_cal_occ_qb_paulisz_evals.reshape((*this_cal_occ_qb_paulisz_confidence.shape[:2], 1)))
+                cal_confidence_deltas = np.abs(np.sum(cal_confidence_deltas * this_occ_qb_paulisz_signs.reshape((*this_occ_qb_paulisz_confidence.shape[:2], 1)), axis=1)/2**len(occ_qb))
+                cal_occupation_correlators_confidence[:, i, 0] = cal_occupation_correlators_evals[:, i] - cal_confidence_deltas[:, 0]
+                cal_occupation_correlators_confidence[:, i, 1] = cal_occupation_correlators_evals[:, i] + cal_confidence_deltas[:, 1]
+                corrected_confidence_deltas = np.abs(corrected_pauliz_confidence - corrected_pauliz_evals.reshape((*corrected_pauliz_confidence.shape[:2], 1)))
+                corrected_confidence_deltas = np.abs(np.nansum(corrected_confidence_deltas * this_occ_qb_paulisz_signs.reshape((*corrected_pauliz_confidence.shape[:2], 1)), axis=1)/2**len(occ_qb))
+                corrected_occupation_correlators_confidence[:, i, 0] = corrected_occupation_correlators_evals[:, i] - corrected_confidence_deltas[:, 0]
+                corrected_occupation_correlators_confidence[:, i, 1] = corrected_occupation_correlators_evals[:, i] + corrected_confidence_deltas[:, 1]
+    
+    if cal_present:
+        to_return = [corrected_occupation_correlators_evals, occupation_correlators_evals, cal_occupation_correlators_evals]
+    else:
+        to_return = [occupation_correlators_evals]
+    if confidence_present:
+        if cal_present:
+            to_return = (to_return, [corrected_occupation_correlators_confidence, occupation_correlators_confidence, cal_occupation_correlators_confidence])
+        else:
+            to_return.append(occupation_correlators_confidence)
+    return to_return
+
+def load_occupation_correlators_bypaulis(samples_dicts, occupied_qubits, cal_samples_dicts=None, confidence=None, shots=None):
     if isinstance(samples_dicts, dict):
         samples_dicts = [samples_dicts]
     elif not isinstance(samples_dicts, (list, tuple, np.ndarray)):
         raise ValueError("samples_dicts must be a list, tuple, or numpy array")
     samples_dicts = np.array(samples_dicts, dtype=object)
+    if isinstance(occupied_qubits[0], int):
+        occupied_qubits = [occupied_qubits]
+    elif not isinstance(occupied_qubits, (list, tuple, np.ndarray)):
+        raise ValueError("occupied_qubits must be list of list of indices")
     if len(samples_dicts.shape) != 1:
         raise ValueError("samples_dicts must be a 1D array of dictionaries")
     if cal_samples_dicts is not None:
         cal_samples_dicts = np.array(cal_samples_dicts, dtype=object)
         if cal_samples_dicts.shape != samples_dicts.shape:
             raise ValueError("cal_samples_dicts must have the same shape as samples_dicts")
-        
-    projection_operators_values = np.zeros((len(samples_dicts), len(strings_qubits)), dtype=float)
-    if confidence is not None:
-        confidence_intervals = np.zeros((len(samples_dicts), len(strings_qubits), 2), dtype=float)
-    results = []
-    if cal_samples_dicts is not None:
-        results_cal = []
-    for i, samples_dict in enumerate(samples_dicts):
-        for j, string_qubit in enumerate(strings_qubits):
-            results.append(single_load_occupation_correlators(samples_dict, string_qubit, confidence=confidence, shots=shots))
-            if cal_samples_dicts is not None:
-                results_cal.append(single_load_occupation_correlators(cal_samples_dicts[i], string_qubit, confidence=confidence, shots=shots))
-    # if confidence is not None:
-    #     return projection_operators_values, confidence_intervals
-    # else:
-    #     return projection_operators_values
-    
-    # mp_arguments = [(samples, string, confidence, shots) for samples, string in product(samples_dicts, strings_qubits)]
-    # if cal_samples_dicts is not None:
-    #     mp_arguments_cal = [(samples, string, confidence, shots) for samples, string in product(cal_samples_dicts, strings_qubits)]
-    # with Pool(processes=cpu_count()) as pool:
-    #     results = pool.starmap(single_load_occupation_correlators, mp_arguments)
-    #     if cal_samples_dicts is not None:
-    #         results_cal = pool.starmap(single_load_occupation_correlators, mp_arguments_cal)
-    
-    if confidence is not None:
-        projection_operators_values = np.array([result[0] for result in results]).reshape(len(samples_dicts), len(strings_qubits))
-        confidence_intervals = np.array([result[1] for result in results]).reshape(len(samples_dicts), len(strings_qubits), 2)
-        to_return = [[projection_operators_values], [confidence_intervals]]
-        if cal_samples_dicts is not None:
-            projection_operators_values_cal = np.array([result[0] for result in results_cal]).reshape(len(cal_samples_dicts), len(strings_qubits))
-            confidence_intervals_cal = np.array([result[1] for result in results_cal]).reshape(len(cal_samples_dicts), len(strings_qubits), 2)
-            to_return[0].append(projection_operators_values_cal)
-            to_return[1].append(confidence_intervals_cal)
-            nqubits = len(list(samples_dicts[0].keys())[0])
-            # NOTE: Trace can change depending on the order of the correlator
-            corrected_projection_operators_values = np.zeros_like(projection_operators_values)
-            corrected_confidence_intervals = np.zeros_like(confidence_intervals)
-            for i, corr_vals in enumerate(projection_operators_values.T):
-                p_arr = compute_depolarizing_probability(projection_operators_values_cal[:, i], 0, 2**nqubits/2**len(strings_qubits[i]), nqubits)
-                this_corrected_projection_operators_values, this_corrected_confidence_intervals = renormalize_observable(corr_vals, p_arr, 2**nqubits/2**len(strings_qubits[i]), nqubits, observable_confidence=confidence_intervals_cal[:, i, :], expected_observable_arr=0)
-                corrected_projection_operators_values[:, i] = this_corrected_projection_operators_values
-                corrected_confidence_intervals[:, i, :] = this_corrected_confidence_intervals
-            to_return[0].insert(0, corrected_projection_operators_values)
-            to_return[1].insert(0, corrected_confidence_intervals)
-        return to_return
-    else:
-        projection_operators_values = np.array(results).reshape(len(samples_dicts), len(strings_qubits))
-        to_return = [projection_operators_values]
-        if cal_samples_dicts is not None:
-            projection_operators_values_cal = np.array(results_cal).reshape(len(cal_samples_dicts), len(strings_qubits))
-            to_return.append(projection_operators_values_cal)
-        return to_return
+
+    # results = []
+    # for i, occ_qbs in enumerate(occupied_qubits):
+    #     for j, samples_dict in enumerate(samples_dicts):
+    #         results.append(load_single_occupation_correlators_paulis(samples_dict, occ_qbs, cal_samples_dict=cal_samples_dicts[j] if cal_samples_dicts is not None else None, confidence=confidence, shots=shots))
+
+    pargs = [(samples_dict, occ_qbs, cal_samples_dicts[j] if cal_samples_dicts is not None else None, confidence, shots) for i, occ_qbs in enumerate(occupied_qubits) for j, samples_dict in enumerate(samples_dicts)]
+    with Pool(processes=cpu_count()) as pool:
+        results = pool.starmap(load_single_occupation_correlators_paulis, pargs)
+
+    return _paulis_results_to_occ_corrs(results, occupied_qubits)
