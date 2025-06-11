@@ -489,7 +489,7 @@ class HeavyHexLattice:
                 plt.savefig(filepath, dpi=300, facecolor="none")
             plt.rcdefaults()
 
-    def plot_highlighted_qubits(self, qubits, scale=1.5, number_qubits=False, colors=None, filepath=""):
+    def plot_highlighted_qubits(self, qubits, scale=1.5, number_qubits=False, number_highlighted=True, colors=None, filepath=""):
         plt.rc("font", family="serif")
         vertex_x = np.array([v[1] for v in sorted(list(self.vertices.keys()))], dtype=int)
         vertex_y = np.array([self.max_y - v[0] for v in sorted(list(self.vertices.keys()))], dtype=int)
@@ -517,6 +517,7 @@ class HeavyHexLattice:
         for exs, eys in zip(edges_endpoints_x, edges_endpoints_y):
             plt.plot(exs, eys, color="black")
         plt.scatter(vertex_x[highlighted_nodes_inds], vertex_y[highlighted_nodes_inds], 350*scale, marker="o", c=colors[highlighted_nodes_color_inds], edgecolors="black", zorder=2)
+        # plt.scatter(vertex_x[highlighted_nodes_inds], vertex_y[highlighted_nodes_inds], 800*scale, marker="o", c=colors[highlighted_nodes_color_inds], edgecolors="black", zorder=2)
         plt.scatter(vertex_x[non_highlighted_nodes_inds], vertex_y[non_highlighted_nodes_inds], 350*scale, marker="o", c="white", edgecolors="black", zorder=2)
         plt.scatter(edges_boxes_x[highlighted_edges_inds], edges_boxes_y[highlighted_edges_inds], 400*scale, marker=(4, 0, 45), c=colors[highlighted_edges_color_inds], edgecolors="black", zorder=2)
         plt.scatter(edges_boxes_x[non_highlighted_edges_inds], edges_boxes_y[non_highlighted_edges_inds], 400*scale, marker=(4, 0, 45), c="white", edgecolors="black", zorder=2)
@@ -529,9 +530,10 @@ class HeavyHexLattice:
         else:
             for i, qbind in enumerate(qubits):
                 y, x = self.coords[qbind]
-                textcolor = best_text_color(*mpl.colors.to_rgb(colors[i]))
-                text = plt.text(x, self.max_y - y, self.coords_to_logical_qb((y, x)), horizontalalignment="center", verticalalignment="center", fontdict={"size": 5.5*scale}, color=textcolor)
-                text.set_transform(text.get_transform() + ttransform)
+                if number_highlighted:
+                    textcolor = best_text_color(*mpl.colors.to_rgb(colors[i]))
+                    text = plt.text(x, self.max_y - y, self.coords_to_logical_qb((y, x)), horizontalalignment="center", verticalalignment="center", fontdict={"size": 5.5*scale}, color=textcolor)
+                    text.set_transform(text.get_transform() + ttransform)
         plt.axis("off")
         plt.ylim([-0.2, self.max_y+0.2])
         plt.tight_layout()
