@@ -43,7 +43,7 @@ def pauli_z_tensor(nqubits, qubit_inds):
         z_mask[qubit_inds] = True
     except IndexError:
         raise ValueError("qubit_inds must be in the interval [0, nqubits)")
-    return Pauli((z_mask, np.zeros_like(z_mask, dtype=bool)))
+    return Pauli((z_mask[::-1], np.zeros_like(z_mask, dtype=bool)))
 
 def pauli_pair_x(nqubits, qubit_inds):
     qubit_inds = sorted(qubit_inds) 
