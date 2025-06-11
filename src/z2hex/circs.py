@@ -143,7 +143,7 @@ def SecondOrderTrotter(lattice, Js, hs, lambdas, t_total, layers, g=None, x_basi
         total_interaction_propagator = TotalInteractionPropagator(lattice, lambdas, t_layer, x_basis).decompose()
     else:
         total_interaction_propagator = TotalInteractionPropagatorDD(lattice, lambdas, g, t_layer, x_basis)
-    total_single_body_propagator = TotalSingleBodyPropagator(lattice, Js, hs, t_total/2, x_basis)
+    total_single_body_propagator = TotalSingleBodyPropagator(lattice, Js, hs, t_layer/2, x_basis)
     layer = total_single_body_propagator.compose(total_interaction_propagator).compose(total_single_body_propagator)
     if barriers: layer.barrier()
     return layer.repeat(layers).decompose()
