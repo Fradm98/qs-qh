@@ -90,7 +90,7 @@ def sparse_pauli_z(n, N):
 
 from sympy.physics.paulialgebra import Pauli, evaluate_pauli_product
 from sympy.core.singleton import Singleton
-from sympy import I, Mul, Add
+from sympy import I, Mul, Add, simplify
 from sympy.core.numbers import One
 from copy import copy
 
@@ -369,13 +369,26 @@ class PauliTensorSum:
             product = []
             for selfsummand in self.summands:
                 for othersummand in other.summands:
-                    product.append(selfsummand*othersummand)
-            return PauliTensorSum(*product)
+                    this_product = selfsummand*othersummand
+                    if this_product.coefficient != 0:
+                        product.append(this_product)
+            result = PauliTensorSum(*product)
+            return result.simplify()
         else:
             TypeError(f"can't substract PauliTensorSum and element of type \'{type(other)}\'")
 
     def norm_upper_bound(self):
         return np.sum([np.abs(summand.coefficient) for summand in self.summands])
+    
+    def simplify(self):
+        new_summands = []
+        for summand in self.summands:
+            if summand.coefficient != 0:
+                new_summands.append(PauliTensor(summand.paulis, simplify(summand.coefficient)))
+        if len(new_summands) == 0:
+            return PauliTensorSum(PauliTensor([], 0))
+        else:
+            return PauliTensorSum(*new_summands)
     
     def __repr__(self):
         strings_to_join = [str(self.summands[0])]
