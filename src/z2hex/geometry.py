@@ -331,7 +331,7 @@ class HeavyHexLattice:
     def max_y(self):
         return max([coords[0] for coords in self.coords])
     
-    def plot_lattice(self, scale=1.5, number_qubits=False, first_qubit=None, backend=None):
+    def plot_lattice(self, scale=1.5, number_qubits=False, first_qubit=None, backend=None, filepath=None):
         plt.rc("font", family="serif")
         vertex_x = np.array([v[1] for v in sorted(list(self.vertices.keys()))], dtype=int)
         vertex_y = np.array([self.max_y - v[0] for v in sorted(list(self.vertices.keys()))], dtype=int)
@@ -361,16 +361,18 @@ class HeavyHexLattice:
             for i, (y, x) in enumerate(self.coords):
                 text = plt.text(x, self.max_y - y, labels[i], horizontalalignment="center", verticalalignment="center", fontdict={"size": 5.5*scale})
                 text.set_transform(text.get_transform() + ttransform)
-        else:
-            for i, (x, y) in enumerate(zip(vertex_x, vertex_y)):
-                plt.text(x, y, r"$\tau$", horizontalalignment="center", verticalalignment="center", fontdict={"size": 10*scale, "family":"serif"})
-            for i, (x, y) in enumerate(zip(edges_boxes_x, edges_boxes_y)):
-                plt.text(x, y, r"$\sigma$", horizontalalignment="center", verticalalignment="center", fontdict={"size": 10*scale, "family":"serif"})
+        # else:
+            # for i, (x, y) in enumerate(zip(vertex_x, vertex_y)):
+            #     plt.text(x, y, r"$\tau$", horizontalalignment="center", verticalalignment="center", fontdict={"size": 10*scale, "family":"serif"})
+            # for i, (x, y) in enumerate(zip(edges_boxes_x, edges_boxes_y)):
+            #     plt.text(x, y, r"$\sigma$", horizontalalignment="center", verticalalignment="center", fontdict={"size": 10*scale, "family":"serif"})
         plt.axis("off")
         if mirror:
             ax.invert_xaxis()
         plt.ylim([-0.2, self.max_y+0.2])
         plt.tight_layout()
+        if filepath is not None:
+            plt.savefig(filepath, dpi=300, facecolor="none")
         plt.rcdefaults()
 
     def plot_line_of_qubits(self, line_of_qubits, scale=1.5, number_qubits=False, join_line=True, color=None, filepath=""):
