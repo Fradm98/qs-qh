@@ -294,11 +294,13 @@ def plot_individual_qubits_observable_evolution(observable_matrix, observable_co
             yerr = np.zeros_like(upper_error_bound_mask, dtype=float)
             yerr[consistency_mask, 0] = lower_error
             yerr[consistency_mask, 1] = upper_error
-            if i == 4:
-                plt.errorbar(x, y, yerr=yerr.T, fmt="o--" if fmt is None else fmt, markersize=8, linewidth=data_linewidth, elinewidth=2, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}", capsize=5, capthick=2)
-            else:
+            # if i == 4:
+                # plt.errorbar(x, y, yerr=yerr.T, fmt="o--" if fmt is None else fmt, markersize=8, linewidth=data_linewidth, elinewidth=2, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}", capsize=5, capthick=2)
+            # else:
                 # plt.errorbar(x[::2], y[::2], yerr=yerr[::2, :].T, fmt="o--" if fmt is None else fmt, markersize=8, linewidth=data_linewidth, elinewidth=1.5, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}", capsize=5, capthick=2)
-                plt.errorbar(x, y, yerr=yerr.T, fmt="o--" if fmt is None else fmt, markersize=8, linewidth=data_linewidth, elinewidth=1.5, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}", capsize=5, capthick=2)
+                # plt.errorbar(x, y, yerr=yerr.T, fmt="o--" if fmt is None else fmt, markersize=8, linewidth=data_linewidth, elinewidth=1.5, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}", capsize=5, capthick=2)
+            plt.fill_between(x, observable_confidence_matrix[:, i, 0], observable_confidence_matrix[:, i, 1], color=cmap(i), alpha=0.3)
+            plt.plot(x, observable_matrix[:, i], "o", markersize=8, markeredgecolor="black", color=color)
         else:
             plt.plot(x, y, "o--" if fmt is None else fmt, markersize=8, linewidth=data_linewidth, markeredgecolor="black", color=color, label=funclabels[i] if funclabels is not None else f"Qubit {i}")
     if function_over is not None:
