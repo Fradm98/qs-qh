@@ -590,7 +590,7 @@ def logical_string_quench_odr_clifford_circuit(chain_length, J, h, lamb, particl
     h_clifford = closest_clifford_angle(h*dt)
     lamb_clifford = closest_clifford_angle(lamb*dt)
     if particle_pair_left_position is not None and particle_pair_length is not None:
-        state_preparation_logical_circ = single_particle_initial_state(chain_length, particle_pair_left_position, particle_pair_length, x_basis=x_basis)
+        state_preparation_logical_circ = particle_pair_initial_state(chain_length, particle_pair_left_position, particle_pair_length, x_basis=x_basis)
     else:
         state_preparation_logical_circ = QuantumCircuit(2*chain_length-1)
     this_trotter_layers = []
@@ -728,11 +728,12 @@ def string_quench_simulation_and_odr_clifford_circs(chain_length, J, h, lamb, pa
     np.random.seed(seed)
     simulation_circuits = string_quench_simulation_circuits_dt(chain_length, J, h, lamb, final_time, dt, steps, backend, optimization_level, g_func, particle_pair_left_position, particle_pair_length, layout, x_basis, force_even=True, barriers=barriers, measure=measure)
     np.random.seed(seed)
-    odr_circuits = string_quench_odr_clifford_circuits_dt(chain_length, J, h, lamb, final_time, dt, steps, backend, 1, g_func, particle_pair_left_position, particle_pair_length, layout, x_basis, force_even=True, barriers=barriers, measure=measure)
+    odr_circuits = string_quench_odr_clifford_circuits_dt(chain_length, J, h, lamb, final_time, dt, steps, backend, 1, g_func, None, None, layout, x_basis, force_even=True, barriers=barriers, measure=measure)
     np.random.seed(seed)
-    aer_circuits = singlep_quench_odr_clifford_circuits_dt(chain_length, J, h, lamb, final_time, dt, steps, AerSimulator(method="stabilizer"), 1, g_func, particle_pair_left_position, particle_pair_length, layout, x_basis, force_even=True, barriers=barriers, measure=measure)
+    # aer_circuits = singlep_quench_odr_clifford_circuits_dt(chain_length, J, h, lamb, final_time, dt, steps, AerSimulator(method="stabilizer"), 1, g_func, particle_pair_left_position, particle_pair_length, layout, x_basis, force_even=True, barriers=barriers, measure=measure)
+    # aer_circuits = singlep_quench_odr_clifford_circuits_dt(chain_length, J, h, lamb, final_time, dt, steps, AerSimulator(method="stabilizer"), 1, g_func, particle_pair_left_position, particle_pair_length, layout, x_basis, force_even=True, barriers=barriers, measure=measure)
     np.random.seed()
-    return simulation_circuits, odr_circuits, aer_circuits
+    return simulation_circuits, odr_circuits#, aer_circuits
 
 def singlep_quench_simulation_and_odr_circs_mpf(chain_length, J, h, lamb, dt, ks_matrix, backend, optimization_level, g_func=None, particle_position=None, layout=None, x_basis=False, barriers=False):
     seed = np.random.randint(100000)
