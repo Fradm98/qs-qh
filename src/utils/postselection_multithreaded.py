@@ -1289,6 +1289,100 @@ def load_samples_jobs(job_db, ibmq_service, sampler_opt_dict, transpiled_circuit
     
     return to_return if len(to_return) > 1 else to_return[0]
 
+def load_postselected_jobs_obs_samples(samples_dicts, postselect_generating_func, observable_generating_funcs, recovery=True, flip_threshold=None, minimum_shots=None, confidence=None, return_samples_dicts=False, return_postselected_samples_dicts=False, postselect_odr=True, max_shots=100000, verbose=False):
+    odr = len(samples_dicts) == 2
+    if odr:
+        real_samples_dicts, odr_samples_dicts = samples_dicts
+    else:
+        real_samples_dicts = samples_dicts
+
+    nqubits = len(list(real_samples_dicts[..., 0].keys())[0])
+    postselection_ops, diagonal_observables, non_diagonal_observables, basis = initialize_postselection(nqubits, postselect_generating_func, observable_generating_funcs)
+
+    if len(transpiled_circuits.shape) > 1:
+        shots = sum(real_samples_dicts[..., 0].values())
+        shots_per_layout = shots // transpiled_circuits.shape[0]
+        if shots_per_layout == 0:
+            shots_per_layout = 1
+    else:
+        shots_per_layout = sum(real_samples_dicts[..., 0].values())
+        transpiled_circuits = transpiled_circuits[None]
+
+    if shots_per_layout > max_shots:
+        nrepetitions = shots_per_layout // max_shots
+        if nrepetitions == 0:
+            nrepetitions = 1
+    else:
+        nrepetitions = 1
+
+    # Generate postselected samples dicts
+    if verbose: print("\rGenerating postselected samples...".ljust(100), end="")
+    if recovery is None:
+        pass
+    elif not recovery:
+        flip_threshold = 0
+        recovery = None
+    elif recovery == True:
+        recovery = None
+    postselected_real_samples_dicts = multiprocess_get_postselected_recovered_samples_dicts(real_samples_dicts, postselection_ops, flip_threshold, minimum_shots, recovery_function=recovery)
+    if odr is not None:
+        if postselect_odr:
+            postselected_odr_samples_dicts = multiprocess_get_postselected_recovered_samples_dicts(odr_samples_dicts, postselection_ops, flip_threshold, minimum_shots, recovery_function=recovery)
+        else:
+            postselected_odr_samples_dicts = odr_samples_dicts
+
+    # Combine samples dicts from different repetitions
+    if verbose: print("\rCombining samples dicts...".ljust(100), end="")
+    if nrepetitions > 1:
+        real_samples_dicts = multiprocess_nrepetitions_combine_samples_dicts(real_samples_dicts, transpiled_circuits.shape, nrepetitions)
+        postselected_real_samples_dicts = multiprocess_nrepetitions_combine_samples_dicts(postselected_real_samples_dicts, transpiled_circuits.shape, nrepetitions)
+        # if odr_circuits is not None:
+        #     odr_samples_dicts = multiprocess_nrepetitions_combine_samples_dicts(odr_samples_dicts, transpiled_circuits.shape, nrepetitions)
+        #     postselected_odr_samples_dicts = multiprocess_nrepetitions_combine_samples_dicts(postselected_odr_samples_dicts, transpiled_circuits.shape, nrepetitions)
+
+    # Combine samples dicts from different layouts
+    combined_real_samples_dicts = multiprocess_layouts_combine_samples_dicts(real_samples_dicts)
+    combined_postselected_real_samples_dicts = multiprocess_layouts_combine_samples_dicts(postselected_real_samples_dicts)
+    if odr is not None:
+        combined_postselected_odr_samples_dicts = multiprocess_layouts_combine_samples_dicts(postselected_odr_samples_dicts)
+
+    # Measure diagonal observables and errors from samples
+    if verbose: print("\rMeasuring observables...".ljust(100), end="")
+    real_expectation_values, real_confidence_intervals = multiprocess_measure_diagonal_observables(combined_postselected_real_samples_dicts, diagonal_observables, 0 if confidence is None else confidence)
+    raw_expectation_values, raw_confidence_intervals = multiprocess_measure_diagonal_observables(combined_real_samples_dicts, diagonal_observables, 0 if confidence is None else confidence)
+    if odr is not None:
+        odr_expectation_values, odr_confidence_intervals = multiprocess_measure_diagonal_observables(combined_postselected_odr_samples_dicts, diagonal_observables, 0 if confidence is None else confidence)
+        clean_expectation_values = np.zeros_like(real_expectation_values)
+        clean_confidence_intervals = np.zeros_like(real_confidence_intervals)
+        for i in range(len(real_expectation_values)):
+            p_arr = compute_depolarizing_probability(odr_expectation_values[i], 1, 0, odr.flatten()[i].num_qubits)
+            clean_expectation_values[i], clean_confidence_intervals[i] = renormalize_observable(real_expectation_values[i], p_arr, 0, transpiled_circuits.flatten()[i].num_qubits, observable_range=(-1, 1), expected_observable_arr=1, observable_confidence=real_confidence_intervals[i])
+
+    # Measure non-diagonal observables
+    for observable in non_diagonal_observables:
+        raise NotImplementedError("Non-diagonal observables not yet supported")
+
+    # Return
+    if verbose: print(f"\rLoaded {len(postselected_real_samples_dicts.flatten())} jobs".ljust(100))
+    if odr is None:
+        to_return = [[real_expectation_values, raw_expectation_values]]
+        if confidence is not None:
+            to_return.append([real_confidence_intervals, raw_confidence_intervals])
+        if return_samples_dicts:
+            to_return.append([real_samples_dicts])
+        if return_postselected_samples_dicts:
+            to_return.append([postselected_real_samples_dicts])
+        return to_return if len(to_return) > 1 else to_return[0]
+    else:
+        to_return = [[clean_expectation_values, real_expectation_values, odr_expectation_values, raw_expectation_values]]
+        if confidence is not None:
+            to_return.append([clean_confidence_intervals, real_confidence_intervals, odr_confidence_intervals, raw_confidence_intervals])
+        if return_samples_dicts:
+            to_return.append([real_samples_dicts, odr_samples_dicts])
+        if return_postselected_samples_dicts:
+            to_return.append([postselected_real_samples_dicts, postselected_odr_samples_dicts])
+        return to_return if len(to_return) > 1 else to_return[0]
+
 def load_postselected_jobs_obs(job_db, ibmq_service, sampler_opt_dict, transpiled_circuits, postselect_generating_func, observable_generating_funcs, extra_options=None, job_index=0, recovery=True, flip_threshold=None, minimum_shots=None, jobs_result_folder="", confidence=None, return_samples_dicts=False, return_postselected_samples_dicts=False, return_layouts=False, odr_circuits=None, postselect_odr=True, max_shots=75000, verbose=False):
     transpiled_circuits = numpy_array_of_circuits(transpiled_circuits)
     odr_circuits = numpy_array_of_circuits(odr_circuits)
