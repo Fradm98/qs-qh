@@ -1,3 +1,0 @@
-module Z2HiggsHexDynamics
-
-end
