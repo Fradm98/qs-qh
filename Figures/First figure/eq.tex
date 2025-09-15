@@ -1,0 +1,44 @@
+\documentclass[11pt,border=1pt]{standalone}
+\usepackage{physics}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+\usepackage{bbold}
+\usepackage{slashed}
+\usepackage{dsfont}
+\usepackage{amssymb}
+\usepackage{physics}
+\usepackage{hhline}
+\usepackage{tikz}
+\usepackage{calc}
+\usepackage{xcolor}
+\usepackage{siunitx}
+\usetikzlibrary{quantikz2}
+
+\usepackage{ifthen}
+\usepackage{stackengine}
+\stackMath
+
+\newcommand{\squig}{{\scriptstyle\sim\mkern-3.9mu}}
+\newcommand{\lsquigend}{{\scriptstyle\lhd\mkern-3mu}}
+\newcommand{\rsquigend}{{\scriptstyle\rule{.1ex}{0ex}\rhd}}
+\newcounter{sqindex}
+\newcommand\squigs[1]{%
+  \setcounter{sqindex}{0}%
+  \whiledo {\value{sqindex}< #1}{\addtocounter{sqindex}{1}\squig}%
+}
+\newcommand\rsquigarrow[2]{%
+  \mathbin{\stackon[2pt]{\squigs{#2}\rsquigend}{\scriptscriptstyle\text{#1\,}}}%
+}
+
+\definecolor{myRed}{RGB}{169, 0, 0}
+\definecolor{myGreen}{RGB}{17, 122, 17}
+\definecolor{myYellow}{RGB}{149, 143, 0}
+
+\begin{document}
+
+$
+(5, 0.01)
+$
+
+\end{document}
