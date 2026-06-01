@@ -1,5 +1,3 @@
-# Contributor: César Benito Lamata @cesarBLG
-
 from qiskit.transpiler.passes import Optimize1qGates, SetLayout, ApplyLayout, FullAncillaAllocation, Optimize1qGatesDecomposition, Optimize1qGatesSimpleCommutation, ALAPScheduleAnalysis, PadDelay
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit.transpiler import PassManager, StagedPassManager, Layout

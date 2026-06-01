@@ -1,5 +1,5 @@
-from utils.postselection import get_recovered_postselected_samples_dict, combine_samples_dicts, get_logical_samples_dict
-from utils.postselection import diagonal_operators_check, get_layout_state
+from utils.postselection_multithreaded import get_recovered_postselected_samples_dict, combine_samples_dicts, get_logical_samples_dict
+from utils.postselection_multithreaded import diagonal_operators_check, get_layout_state
 from qiskit.primitives.base.base_primitive_job import BasePrimitiveJob
 from qiskit.primitives.primitive_job import PrimitiveJob
 from utils.circs import depth2qb
