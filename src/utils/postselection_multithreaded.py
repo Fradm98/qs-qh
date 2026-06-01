@@ -4,6 +4,7 @@ from utils.odr import compute_depolarizing_probability, renormalize_observable
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from utils.postselection_weights import decode_with_optimized_weights
 from qiskit_ibm_runtime import RuntimeDecoder, RuntimeEncoder
+from qiskit_ibm_runtime.exceptions import RuntimeJobNotFound
 from utils.bootstrap import bootstrap_sample_dict_mean
 from qiskit.quantum_info import Pauli, PauliList
 from utils.hexec import execute_sampler_batch
@@ -985,11 +986,7 @@ def load_job_from_local_or_ibmq(job_id, ibmq_service, jobs_result_folder):
         if os.path.isfile(job_filepath):
             job_result = load_job_result(job_filepath)
         else:
-            job_obj = ibmq_service.job(job_id=job_id)
-            try:
-                job_result = save_job_result(job_filepath, job_obj)
-            except (RuntimeJobFailureError, RuntimeInvalidStateError):
-                job_result = None
+            return None
     else:
         job_obj = ibmq_service.job(job_id=job_id)
         try:

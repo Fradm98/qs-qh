@@ -491,7 +491,7 @@ class HeavyHexLattice:
                 plt.savefig(filepath, dpi=300, facecolor="none")
             plt.rcdefaults()
 
-    def plot_highlighted_qubits(self, qubits, scale=1.5, number_qubits=False, number_highlighted=True, colors=None, filepath=""):
+    def plot_highlighted_qubits(self, qubits, scale=1.5, markers=None, number_qubits=False, number_highlighted=True, colors=None, filepath=""):
         plt.rc("font", family="serif")
         vertex_x = np.array([v[1] for v in sorted(list(self.vertices.keys()))], dtype=int)
         vertex_y = np.array([self.max_y - v[0] for v in sorted(list(self.vertices.keys()))], dtype=int)
@@ -518,10 +518,19 @@ class HeavyHexLattice:
         ax.set_aspect('equal')
         for exs, eys in zip(edges_endpoints_x, edges_endpoints_y):
             plt.plot(exs, eys, color="black")
-        plt.scatter(vertex_x[highlighted_nodes_inds], vertex_y[highlighted_nodes_inds], 350*scale, marker="o", c=colors[highlighted_nodes_color_inds], edgecolors="black", zorder=2)
+        if markers is None:
+            node_markers = ["o"]*len(highlighted_nodes_inds)
+            edge_markers = [(4, 0, 45)]*len(highlighted_edges_inds)
+        else:
+            node_markers = [markers[i] for i, qbind in enumerate(qubits) if not is_edge_coords(self.coords[qbind])]
+            edge_markers = [markers[i] for i, qbind in enumerate(qubits) if is_edge_coords(self.coords[qbind])]
+        for hi, marker, colorind in zip(highlighted_nodes_inds, node_markers, highlighted_nodes_color_inds):
+            plt.scatter(vertex_x[hi], vertex_y[hi], 350*scale, marker=marker, c=colors[colorind], edgecolors="black", zorder=2)
         # plt.scatter(vertex_x[highlighted_nodes_inds], vertex_y[highlighted_nodes_inds], 800*scale, marker="o", c=colors[highlighted_nodes_color_inds], edgecolors="black", zorder=2)
         plt.scatter(vertex_x[non_highlighted_nodes_inds], vertex_y[non_highlighted_nodes_inds], 350*scale, marker="o", c="white", edgecolors="black", zorder=2)
-        plt.scatter(edges_boxes_x[highlighted_edges_inds], edges_boxes_y[highlighted_edges_inds], 400*scale, marker=(4, 0, 45), c=colors[highlighted_edges_color_inds], edgecolors="black", zorder=2)
+        for hi, marker, colorind in zip(highlighted_edges_inds, edge_markers, highlighted_edges_color_inds):
+            plt.scatter(edges_boxes_x[hi], edges_boxes_y[hi], 400*scale, marker=marker, c=colors[colorind], edgecolors="black", zorder=2)
+        # plt.scatter(edges_boxes_x[highlighted_edges_inds], edges_boxes_y[highlighted_edges_inds], 400*scale, marker=(4, 0, 45), c=colors[highlighted_edges_color_inds], edgecolors="black", zorder=2)
         plt.scatter(edges_boxes_x[non_highlighted_edges_inds], edges_boxes_y[non_highlighted_edges_inds], 400*scale, marker=(4, 0, 45), c="white", edgecolors="black", zorder=2)
         ttransform = mpl.transforms.Affine2D().translate(0, -1*scale)
         if number_qubits:
